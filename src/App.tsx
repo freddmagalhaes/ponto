@@ -1,0 +1,103 @@
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { supabase } from './services/supabase';
+import { useAuthStore } from './store/useAuth';
+
+// Layouts
+import AuthLayout from './layouts/AuthLayout';
+import DashboardLayout from './layouts/DashboardLayout';
+
+// Pages
+import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+import Employees from './pages/Employees';
+import MyRecords from './pages/MyRecords';
+import Ponto from './pages/Ponto';
+import Import from './pages/Import';
+
+export default function App() {
+  const { user, isLoading, setUser, setLoading, setEmployeeData } = useAuthStore();
+
+  useEffect(() => {
+    // Check active sessions and sets the user
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null, session);
+      if (session?.user) {
+        fetchEmployee(session.user.id);
+      } else {
+        setLoading(false);
+      }
+    }).catch((e) => {
+      console.warn("Supabase fetch failed (mock URL?)", e);
+      setLoading(false);
+    });
+
+    // Listen for changes on auth state (logged in, signed out, etc.)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setUser(session?.user ?? null, session);
+        if (session?.user) {
+          fetchEmployee(session.user.id);
+        } else {
+          setLoading(false);
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, [setUser, setLoading]);
+
+  const fetchEmployee = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('*')
+        .eq('id', userId)
+        .single();
+        
+      if (!error && data) {
+        setEmployeeData(data);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center dark:bg-zinc-950 dark:text-gray-100">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* Public / Non-authenticated routes */}
+        {!user ? (
+          <Route element={<AuthLayout />}>
+            <Route path="/login" element={<Login />} />
+            <Route path="*" element={<Navigate to="/login" replace />} />
+          </Route>
+        ) : (
+          /* Authenticated routes */
+          <Route element={<DashboardLayout />}>
+            {/* User & Admin shared */}
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/historico" element={<MyRecords />} />
+            <Route path="/registrar" element={<Ponto />} />
+            
+            {/* Admin only (simplistic approach for now) */}
+            <Route path="/funcionarios" element={<Employees />} />
+            <Route path="/importar" element={<Import />} />
+            
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        )}
+      </Routes>
+    </BrowserRouter>
+  );
+}
