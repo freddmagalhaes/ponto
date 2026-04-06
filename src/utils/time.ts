@@ -1,4 +1,4 @@
-import { differenceInMinutes, parseISO, isValid, format, isAfter, isBefore, addDays, getHours, setHours, setMinutes, setSeconds, setMilliseconds } from 'date-fns';
+import { differenceInMinutes, parseISO, isValid, format, isAfter, isBefore, getHours, startOfDay } from 'date-fns';
 
 export interface TimeCalculationOptions {
   checkIn: string | Date | null;
@@ -12,11 +12,10 @@ export interface DailyCalculationResult {
   nightMinutes: number;
 }
 
-const LUNCH_BREAK_MINUTES = 72; // 1h12min
-const REGULAR_WORK_HOURS_MINUTES = 8 * 60; // 8 hours
+const REGULAR_WORK_HOURS_MINUTES = 8 * 60; // 8 horas
 
 /**
- * Normalizes a date-like object to a valid Date.
+ * Normaliza um objeto, transformando string em Data válida se necessário.
  */
 const toDate = (date: string | Date): Date | null => {
   if (!date) return null;
@@ -25,19 +24,19 @@ const toDate = (date: string | Date): Date | null => {
 };
 
 /**
- * Calculates time inside the 22:00 - 05:00 window.
+ * Calcula o tempo trabalhado dentro do período noturno (22:00 - 05:00).
  */
 const getNightMinutes = (start: Date, end: Date): number => {
   let nightMins = 0;
   let current = new Date(start);
 
-  // We check minute by minute to see if it falls in the night window (simple approach for ranges < 24h)
+  // Verificamos minuto a minuto se recai na janela noturna
   while (isBefore(current, end)) {
     const hour = getHours(current);
     if (hour >= 22 || hour < 5) {
       nightMins++;
     }
-    current = new Date(current.getTime() + 60000); // add 1 minute
+    current = new Date(current.getTime() + 60000); // adiciona 1 minuto
   }
   return nightMins;
 };
@@ -57,21 +56,39 @@ export const calculateDailyTimes = ({ checkIn, checkOut }: TimeCalculationOption
     return defaultResult;
   }
 
-  // Ensure end is after start, if not something is wrong with the record
+  // Garante que a saída seja posterior à entrada, caso contrário os dados são inválidos
   if (!isAfter(end, start)) {
     return defaultResult;
   }
 
   const totalMinutes = differenceInMinutes(end, start);
   
-  // Deduct fixed 1h12 lunch break
-  // Only deduct if they worked more than the lunch break itself to avoid negative numbers
-  const workedMinutes = Math.max(0, totalMinutes > LUNCH_BREAK_MINUTES ? totalMinutes - LUNCH_BREAK_MINUTES : totalMinutes);
+  // O horário de almoço fixo é das 12:00 às 13:12
+  const dayStart = startOfDay(start);
+  const lunchStart = new Date(dayStart);
+  lunchStart.setHours(12, 0, 0, 0);
   
-  // Overtime is anything over 8 hours
+  const lunchEnd = new Date(dayStart);
+  lunchEnd.setHours(13, 12, 0, 0);
+
+  let lunchDeduction = 0;
+
+  // Verifica se o período de trabalho tem intersecção com o almoço
+  if (isBefore(start, lunchEnd) && isAfter(end, lunchStart)) {
+    // Calcula o início efetivo da intersecção
+    const effectiveLunchStart = isAfter(start, lunchStart) ? start : lunchStart;
+    // Calcula o fim efetivo da intersecção
+    const effectiveLunchEnd = isBefore(end, lunchEnd) ? end : lunchEnd;
+    
+    lunchDeduction = differenceInMinutes(effectiveLunchEnd, effectiveLunchStart);
+  }
+
+  const workedMinutes = Math.max(0, totalMinutes - lunchDeduction);
+  
+  // Horas extras: qualquer valor trabalhado que exceder 8 horas (480 minutos)
   const overtimeMinutes = Math.max(0, workedMinutes - REGULAR_WORK_HOURS_MINUTES);
 
-  // Night hours
+  // Minutos noturnos
   const nightMinutes = getNightMinutes(start, end);
 
   return {
@@ -83,7 +100,7 @@ export const calculateDailyTimes = ({ checkIn, checkOut }: TimeCalculationOption
 };
 
 /**
- * Formats minutes into HH:mm or HHh mm m string format
+ * Formata os minutos num formato de string (HH:mm ou HHh mm m)
  */
 export const formatMinutesToTime = (minutes: number, verbose = false): string => {
   const h = Math.floor(minutes / 60);

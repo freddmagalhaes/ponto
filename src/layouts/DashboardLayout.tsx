@@ -5,12 +5,16 @@ import {
   Clock, 
   FileBox, 
   LogOut, 
-  Fingerprint
+  Fingerprint,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuth';
+import { useThemeStore } from '../store/useTheme';
 
 export default function DashboardLayout() {
   const { employeeData, signOut } = useAuthStore();
+  const { theme, toggleTheme } = useThemeStore();
   const location = useLocation();
 
   const isAdmin = employeeData?.role === 'admin';
@@ -24,7 +28,7 @@ export default function DashboardLayout() {
   ];
 
   return (
-    <div className="min-h-screen bg-secondary/30 dark:bg-zinc-950 flex">
+    <div className="min-h-screen bg-background flex">
       {/* Sidebar */}
       <aside className="w-64 bg-card border-r border-border hidden md:flex md:flex-col shadow-sm">
         <div className="h-16 flex items-center px-6 border-b border-border text-primary">
@@ -75,13 +79,23 @@ export default function DashboardLayout() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-h-screen sm:ml-0 overflow-y-auto w-full">
-        {/* Mobile Header */}
-        <div className="md:hidden h-16 bg-card border-b border-border flex items-center justify-between px-4">
-          <div className="flex items-center text-primary">
+        {/* Header superior central (Mobile e Desktop para o botão de tema) */}
+        <div className="h-16 flex items-center justify-between px-4 md:px-8 bg-card md:bg-transparent border-b border-border md:border-transparent">
+          <div className="flex items-center text-primary md:hidden">
             <Clock className="w-6 h-6 mr-2" />
             <span className="font-bold text-lg text-foreground">PontoApp</span>
           </div>
-          {/* A mobile menu toggle would go here */}
+          <div className="hidden md:block" /> {/* Spacer */}
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={toggleTheme}
+              className="flex items-center justify-center w-10 h-10 rounded-full bg-card md:bg-card/50 border border-border shadow-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-300 hover:scale-105 active:scale-95"
+              aria-label="Alternar tema"
+              title="Alternar modo Claro / Escuro"
+            >
+              {theme === 'dark' ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-indigo-500" />}
+            </button>
+          </div>
         </div>
 
         <div className="p-6 md:p-8 flex-1 max-w-7xl mx-auto w-full">

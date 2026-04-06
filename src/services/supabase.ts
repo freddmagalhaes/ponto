@@ -11,3 +11,17 @@ export const supabase = createClient(
   supabaseUrl || 'https://placeholder.supabase.co',
   supabaseKey || 'placeholder-anon-key'
 );
+
+// Cliente secundário sem persistência de sessão (usado para o Admin cadastrar novos usuários
+// sem ser deslogado do sistema no frontend).
+export const supabaseAdmin = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseKey || 'placeholder-anon-key',
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false
+    }
+  }
+);

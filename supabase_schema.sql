@@ -39,11 +39,23 @@ create table public.time_records (
 alter table public.employees enable row level security;
 alter table public.time_records enable row level security;
 
+-- Function to safely check if current user is admin (bypasses RLS to avoid infinite recursion)
+create or replace function public.is_admin()
+returns boolean
+language sql
+security definer
+as $$
+  select exists (
+    select 1 from public.employees 
+    where id = auth.uid() and role = 'admin'
+  );
+$$;
+
 -- Setup Policies for Employees table
 -- Admin can do everything
 create policy "Admins have full access to employees"
   on public.employees for all 
-  using ( (select role from public.employees where id = auth.uid()) = 'admin' );
+  using ( public.is_admin() );
 
 -- Users can only read their own profile
 create policy "Users can view own profile"
@@ -54,7 +66,7 @@ create policy "Users can view own profile"
 -- Admin can do everything
 create policy "Admins have full access to time records"
   on public.time_records for all 
-  using ( (select role from public.employees where id = auth.uid()) = 'admin' );
+  using ( public.is_admin() );
 
 -- Users can view and create their own records
 create policy "Users can view own records"

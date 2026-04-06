@@ -2,12 +2,15 @@
 
 A comprehensive web-based employee time tracking system built with React, Supabase, and Tailwind CSS.
 
-## Features
-- User authentication
-- Administrative dashboard
-- Employee and record management
-- Automated work hours, overtime, and night shift calculations
-- AFV file import
+## Funcionalidades Implementadas
+- **Autenticação e Segurança (RLS)** integrada ao Supabase, controlando acessos de administradores e usuários.
+- **Painel/Dashboard** detalhado para visualização dos registros.
+- **Gestão de Funcionários (CRUD Completo)**: Permite ao Administrador criar (sem deslogar do sistema), editar e inativar contas (Soft-Delete) com segurança.
+- **Registro de Ponto Manual e Inteligente**: Reconhece automaticamente o avanço da madrugada se a saída for no dia seguinte (cruzamento do fluxo da meia-noite).
+- **Relatórios Isolados por Fuso**: Filtro exato do mês pelo `date-fns`, removendo problemas de conversões fuso-horárias vindas de UTC que vazavam para o dia 1º.
+- **Cálculo Trabalhista Automatizado**: Desconta 1h12m fixos de almoço; Calcula Extras acima da 8ª hora; Calcula minutos Noturnos precisos entre 22h e 05h.
+- Importação de arquivos AFV (em desenvolvimento).
+- **Temas**: Modo Escuro Moderno e Modo Claro Customizado (slate-50 premium) com bordas refinadas de alta visibilidade.
 
 ## Mock Credentials (Testing)
 To test the interface without a real Supabase backend or to access the existing mock users, you can use the following mock credentials:

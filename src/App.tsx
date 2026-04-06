@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { supabase } from './services/supabase';
 import { useAuthStore } from './store/useAuth';
+import { useThemeStore } from './store/useTheme';
 
 // Layouts
 import AuthLayout from './layouts/AuthLayout';
@@ -17,8 +18,16 @@ import Import from './pages/Import';
 
 export default function App() {
   const { user, isLoading, setUser, setLoading, setEmployeeData } = useAuthStore();
+  const { theme } = useThemeStore();
 
   useEffect(() => {
+    // Aplica o tema salvo no carregamento
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+
     // Check active sessions and sets the user
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null, session);
@@ -67,7 +76,7 @@ export default function App() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center dark:bg-zinc-950 dark:text-gray-100">
+      <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
       </div>
     );
