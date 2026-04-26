@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase, supabaseAdmin } from '../services/supabase';
-import { Loader2, Plus, X, Edit, Power, PowerOff } from 'lucide-react';
+import { Loader2, Plus, X, Edit, Power, PowerOff, Key } from 'lucide-react';
 
 export default function Employees() {
   const [employees, setEmployees] = useState<any[]>([]);
@@ -137,6 +137,26 @@ export default function Employees() {
       alert("Erro ao atualizar: " + e.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleResetPasswordAdmin = async (email: string) => {
+    if (!confirm(`Deseja enviar um e-mail de redefinição de senha para ${email}?`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (error) throw error;
+      alert("E-mail de redefinição enviado com sucesso!");
+    } catch (e: any) {
+      alert("Erro ao enviar e-mail: " + e.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -333,6 +353,14 @@ export default function Employees() {
                         <Edit className="w-4 h-4" />
                       </button>
                       
+                      <button 
+                        onClick={() => handleResetPasswordAdmin(emp.email)}
+                        className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-amber-500 transition-colors tooltip"
+                        title="Redefinir Senha"
+                      >
+                        <Key className="w-4 h-4" />
+                      </button>
+
                       <button 
                         onClick={() => handleToggleStatus(emp.id, emp.is_active)}
                         className={`p-1.5 rounded-md transition-colors tooltip ${

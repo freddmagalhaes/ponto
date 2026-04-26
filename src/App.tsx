@@ -15,6 +15,8 @@ import Employees from './pages/Employees';
 import MyRecords from './pages/MyRecords';
 import Ponto from './pages/Ponto';
 import Import from './pages/Import';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 
 export default function App() {
   const { user, isLoading, setUser, setLoading, setEmployeeData } = useAuthStore();
@@ -89,6 +91,8 @@ export default function App() {
         {!user ? (
           <Route element={<AuthLayout />}>
             <Route path="/login" element={<Login />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Route>
         ) : (
@@ -96,6 +100,7 @@ export default function App() {
           <Route element={<DashboardLayout />}>
             {/* User & Admin shared */}
             <Route path="/" element={<Dashboard />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/historico" element={<MyRecords />} />
             <Route path="/registrar" element={<Ponto />} />
             

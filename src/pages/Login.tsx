@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuth';
 import { supabase } from '../services/supabase';
 
@@ -92,6 +93,12 @@ export default function Login() {
             className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 bg-background"
             placeholder="********"
           />
+        </div>
+
+        <div className="flex items-center justify-end">
+          <Link to="/forgot-password" title="Esqueci minha senha" className="text-xs text-primary hover:underline">
+            Esqueci minha senha
+          </Link>
         </div>
 
         <button
