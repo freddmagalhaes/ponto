@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../services/supabase';
-import { startOfMonth, format, subDays } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { format, endOfMonth, getDaysInMonth, setDate } from 'date-fns';
 import { formatMinutesToTime } from '../utils/time';
 
 export default function Dashboard() {
+  const [month, setMonth] = useState<number>(new Date().getMonth());
+  const [year, setYear] = useState<number>(new Date().getFullYear());
+  const [isDateInitialized, setIsDateInitialized] = useState(false);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     workedMinutes: 0,
@@ -15,21 +17,49 @@ export default function Dashboard() {
   });
   const [chartData, setChartData] = useState<{ name: string, hours: number }[]>([]);
 
+  const months = [
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+  ];
+
   useEffect(() => {
-    fetchDashboardData();
+    const fetchServerDate = async () => {
+      try {
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/auth/v1/health`, { method: 'GET' });
+        const serverDateStr = res.headers.get('date');
+        if (serverDateStr) {
+          const serverDate = new Date(serverDateStr);
+          setMonth(serverDate.getMonth());
+          setYear(serverDate.getFullYear());
+        }
+      } catch (e) {
+        console.warn("Falha ao buscar data do servidor, usando data local.");
+      } finally {
+        setIsDateInitialized(true);
+      }
+    };
+    fetchServerDate();
   }, []);
+
+  useEffect(() => {
+    if (isDateInitialized) {
+      fetchDashboardData();
+    }
+  }, [month, year, isDateInitialized]);
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const now = new Date();
-      const firstDayStr = format(startOfMonth(now), 'yyyy-MM-dd');
+      const baseDate = new Date(year, month, 1);
+      const firstDayStr = format(baseDate, 'yyyy-MM-dd');
+      const lastDayStr = format(endOfMonth(baseDate), 'yyyy-MM-dd');
 
       // Fetch all time records for the current month based on the literal 'date'
       const { data: recordsData, error: recordsError } = await supabase
         .from('time_records')
         .select('*')
-        .gte('date', firstDayStr);
+        .gte('date', firstDayStr)
+        .lte('date', lastDayStr);
 
       if (recordsError) throw recordsError;
 
@@ -60,19 +90,20 @@ export default function Dashboard() {
         employeeCount: empCount || 0
       });
 
-      // Prepare Chart Data for the last 7 days
-      const last7Days = Array.from({ length: 7 }, (_, i) => {
-        const d = subDays(now, 6 - i);
+      // Prepare Chart Data for the whole month
+      const daysInMonth = getDaysInMonth(baseDate);
+      const monthDays = Array.from({ length: daysInMonth }, (_, i) => {
+        const d = setDate(baseDate, i + 1);
         return {
           dateStr: format(d, 'yyyy-MM-dd'),
-          name: format(d, 'EEE', { locale: ptBR }),
+          name: format(d, 'dd/MM'),
           hours: 0
         };
       });
 
       if (recordsData) {
         recordsData.forEach(record => {
-          const day = last7Days.find(d => d.dateStr === record.date);
+          const day = monthDays.find(d => d.dateStr === record.date);
           if (day) {
             day.hours += (record.worked_minutes || 0) / 60;
           }
@@ -80,11 +111,11 @@ export default function Dashboard() {
       }
 
       // Round hours for chart
-      last7Days.forEach(d => {
+      monthDays.forEach(d => {
         d.hours = Math.round(d.hours * 10) / 10;
       });
 
-      setChartData(last7Days);
+      setChartData(monthDays);
 
     } catch (e) {
       console.error(e);
@@ -108,7 +139,29 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <div className="flex gap-2">
+          <select 
+            value={month} 
+            onChange={(e) => setMonth(Number(e.target.value))}
+            className="bg-card border border-border rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary"
+          >
+            {months.map((m, i) => (
+              <option key={i} value={i}>{m}</option>
+            ))}
+          </select>
+          <select 
+            value={year} 
+            onChange={(e) => setYear(Number(e.target.value))}
+            className="bg-card border border-border rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary"
+          >
+            {[new Date().getFullYear() - 1, new Date().getFullYear(), new Date().getFullYear() + 1].map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+        </div>
+      </div>
       
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-card p-6 rounded-xl border border-border shadow-sm">
@@ -130,7 +183,7 @@ export default function Dashboard() {
       </div>
 
       <div className="bg-card p-6 rounded-xl border border-border shadow-sm h-80">
-        <h2 className="text-lg font-semibold mb-4">Horas Trabalhadas (Últimos 7 dias)</h2>
+        <h2 className="text-lg font-semibold mb-4">Horas Trabalhadas (Mensal)</h2>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />

@@ -3,23 +3,48 @@ import { supabase } from '../services/supabase';
 import { useAuthStore } from '../store/useAuth';
 import { formatMinutesToTime, formatDateExtensive, formatTime } from '../utils/time';
 import { Loader2 } from 'lucide-react';
-import { parseISO, format, endOfMonth } from 'date-fns';
+import { format, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export default function MyRecords() {
-  const { user } = useAuthStore();
+  const { user, employeeData } = useAuthStore();
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [month, setMonth] = useState(new Date().getMonth());
-  const [year, setYear] = useState(new Date().getFullYear());
+  const [month, setMonth] = useState<number>(new Date().getMonth());
+  const [year, setYear] = useState<number>(new Date().getFullYear());
+  const [isDateInitialized, setIsDateInitialized] = useState(false);
 
   useEffect(() => {
+    const fetchServerDate = async () => {
+      try {
+        // Faz uma requisição leve para pegar o cabeçalho 'Date' do servidor
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/auth/v1/health`, { method: 'GET' });
+        const serverDateStr = res.headers.get('date');
+        if (serverDateStr) {
+          const serverDate = new Date(serverDateStr);
+          setMonth(serverDate.getMonth());
+          setYear(serverDate.getFullYear());
+        }
+      } catch (e) {
+        console.warn("Falha ao buscar data do servidor, usando data local.");
+      } finally {
+        setIsDateInitialized(true);
+      }
+    };
+    fetchServerDate();
+  }, []);
+
+  useEffect(() => {
+    if (!isDateInitialized) return;
+    
     if (user && !user.id.startsWith('mock')) {
       fetchRecords();
     } else {
       setLoading(false);
     }
-  }, [user, month, year]);
+  }, [user, month, year, isDateInitialized]);
 
   const fetchRecords = async () => {
     try {
@@ -47,7 +72,67 @@ export default function MyRecords() {
   };
 
   const handleExportPDF = () => {
-    alert("Função de exportar PDF em desenvolvimento.");
+    if (!records || records.length === 0) {
+      alert("Não há registros para exportar neste mês.");
+      return;
+    }
+
+    const doc = new jsPDF();
+    const monthName = months[month];
+    
+    // Cabeçalho
+    doc.setFontSize(18);
+    doc.text(`Relatório de Ponto - ${monthName} de ${year}`, 14, 22);
+    
+    // Info adicional
+    doc.setFontSize(11);
+    doc.text(`Empresa: PontoApp`, 14, 30);
+    doc.text(`Funcionário: ${employeeData?.name || user?.user_metadata?.name || 'Não informado'}`, 14, 36);
+    doc.text(`Gerado em: ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`, 14, 42);
+
+    const tableColumn = ["Data", "Entrada", "Saída", "Total", "Extra / Noturno", "Origem"];
+    const tableRows: any[] = [];
+
+    records.forEach(record => {
+      const dateStr = formatDateExtensive(record.date);
+      const checkIn = formatTime(record.check_in);
+      const checkOut = formatTime(record.check_out);
+      const total = formatMinutesToTime(record.worked_minutes || 0);
+      const extraNight = `${formatMinutesToTime(record.overtime_minutes || 0)} / ${formatMinutesToTime(record.night_minutes || 0)}`;
+      const source = record.source === 'imported' ? 'Importado' : 'Manual';
+      
+      tableRows.push([dateStr, checkIn, checkOut, total, extraNight, source]);
+    });
+
+    autoTable(doc, {
+      head: [tableColumn],
+      body: tableRows,
+      startY: 48,
+      theme: 'grid',
+      styles: { fontSize: 9, cellPadding: 3 },
+      headStyles: { fillColor: [41, 128, 185], textColor: 255 },
+      margin: { bottom: 60 } // Garante espaço no rodapé para que a assinatura não fique sozinha numa página
+    });
+
+    const finalY = (doc as any).lastAutoTable.finalY || 150;
+    let currentY = finalY + 25;
+
+    doc.setFontSize(10);
+    
+    // Local e Data
+    doc.text("Local e Data: __________________________, _____ de ________________ de 20____", 14, currentY);
+
+    currentY += 25;
+    
+    // Linha Funcionário
+    doc.line(20, currentY, 90, currentY);
+    doc.text("Assinatura do Funcionário", 35, currentY + 5);
+
+    // Linha Responsável
+    doc.line(120, currentY, 190, currentY);
+    doc.text("Assinatura do Responsável", 135, currentY + 5);
+
+    doc.save(`relatorio_ponto_${String(month + 1).padStart(2, '0')}_${year}.pdf`);
   };
 
   const months = [
