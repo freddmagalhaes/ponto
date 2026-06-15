@@ -7,6 +7,7 @@ import { useThemeStore } from './store/useTheme';
 // Layouts
 import AuthLayout from './layouts/AuthLayout';
 import DashboardLayout from './layouts/DashboardLayout';
+import ProtectedRoute from './components/ProtectedRoute';
 
 // Pages
 import Login from './pages/Login';
@@ -104,9 +105,11 @@ export default function App() {
             <Route path="/historico" element={<MyRecords />} />
             <Route path="/registrar" element={<Ponto />} />
             
-            {/* Admin only (simplistic approach for now) */}
-            <Route path="/funcionarios" element={<Employees />} />
-            <Route path="/importar" element={<Import />} />
+            {/* Admin only */}
+            <Route element={<ProtectedRoute requiredRole="admin" />}>
+              <Route path="/funcionarios" element={<Employees />} />
+              <Route path="/importar" element={<Import />} />
+            </Route>
             
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
