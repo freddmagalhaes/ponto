@@ -133,7 +133,7 @@ export default function Ponto() {
     
     // Converte data + hora em ISO
     const checkInIso = new Date(`${manualDate}T${manualCheckIn}:00`).toISOString();
-    let checkOutDate = new Date(`${manualDate}T${manualCheckOut}:00`);
+    const checkOutDate = new Date(`${manualDate}T${manualCheckOut}:00`);
 
     // Correção: Se o horário de saída for menor ou igual ao horário de entrada,
     // significa que a pessoa trabalhou durante a madrugada atravessando para o DIA SEGUINTE!

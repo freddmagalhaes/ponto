@@ -32,7 +32,7 @@ export default function Dashboard() {
           setMonth(serverDate.getMonth());
           setYear(serverDate.getFullYear());
         }
-      } catch (e) {
+      } catch {
         console.warn("Falha ao buscar data do servidor, usando data local.");
       } finally {
         setIsDateInitialized(true);

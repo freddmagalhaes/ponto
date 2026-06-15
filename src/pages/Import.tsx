@@ -93,7 +93,7 @@ export default function Import() {
           } else {
              successCount++;
           }
-        } catch (dbErr) {
+        } catch {
            errors.push(`Linha ${i + 1}: Erro ao formatar data.`);
         }
       }
