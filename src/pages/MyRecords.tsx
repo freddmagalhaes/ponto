@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { useAuthStore } from '../store/useAuth';
 import { formatMinutesToTime, formatDateExtensive, formatTime } from '../utils/time';
-import { Loader2 } from 'lucide-react';
+import { Loader2, MapPin } from 'lucide-react';
 import { format, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import jsPDF from 'jspdf';
@@ -90,7 +90,7 @@ export default function MyRecords() {
     doc.text(`Funcionário: ${employeeData?.name || user?.user_metadata?.name || 'Não informado'}`, 14, 36);
     doc.text(`Gerado em: ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`, 14, 42);
 
-    const tableColumn = ["Data", "Entrada", "Saída", "Total", "Extra / Noturno", "Origem"];
+    const tableColumn = ["Data", "Entrada", "Saída", "Total", "Extra / Noturno", "Origem", "Localização"];
     const tableRows: any[] = [];
 
     records.forEach(record => {
@@ -100,8 +100,9 @@ export default function MyRecords() {
       const total = formatMinutesToTime(record.worked_minutes || 0);
       const extraNight = `${formatMinutesToTime(record.overtime_minutes || 0)} / ${formatMinutesToTime(record.night_minutes || 0)}`;
       const source = record.source === 'imported' ? 'Importado' : 'Manual';
+      const gpsStatus = record.latitude_in ? 'Com GPS' : 'Sem GPS';
       
-      tableRows.push([dateStr, checkIn, checkOut, total, extraNight, source]);
+      tableRows.push([dateStr, checkIn, checkOut, total, extraNight, source, gpsStatus]);
     });
 
     autoTable(doc, {
@@ -183,18 +184,19 @@ export default function MyRecords() {
                 <th className="px-6 py-3 font-medium">Total</th>
                 <th className="px-6 py-3 font-medium">Extra / Noturno</th>
                 <th className="px-6 py-3 font-medium">Origem</th>
+                <th className="px-6 py-3 font-medium">Localização</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center">
+                  <td colSpan={7} className="px-6 py-12 text-center">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" />
                   </td>
                 </tr>
               ) : records.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
                     Nenhum registro encontrado para este período.
                   </td>
                 </tr>
@@ -226,6 +228,37 @@ export default function MyRecords() {
                           Manual
                         </span>
                       )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex gap-2">
+                        {record.latitude_in && record.longitude_in && (
+                          <a 
+                            href={`https://www.google.com/maps?q=${record.latitude_in},${record.longitude_in}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-primary hover:text-primary/80 flex items-center gap-0.5 font-medium"
+                            title="Localização de Entrada"
+                          >
+                            <MapPin className="w-3.5 h-3.5" />
+                            <span className="text-xs">Ent.</span>
+                          </a>
+                        )}
+                        {record.latitude_out && record.longitude_out && (
+                          <a 
+                            href={`https://www.google.com/maps?q=${record.latitude_out},${record.longitude_out}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-destructive hover:text-destructive/80 flex items-center gap-0.5 font-medium"
+                            title="Localização de Saída"
+                          >
+                            <MapPin className="w-3.5 h-3.5" />
+                            <span className="text-xs">Saí.</span>
+                          </a>
+                        )}
+                        {!record.latitude_in && !record.latitude_out && (
+                          <span className="text-xs text-muted-foreground/60 font-normal">Sem GPS</span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

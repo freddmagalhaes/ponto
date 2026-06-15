@@ -29,6 +29,10 @@ create table public.time_records (
   overtime_minutes integer default 0,
   night_minutes integer default 0,
   source checkin_source default 'manual'::checkin_source not null,
+  latitude_in double precision,
+  longitude_in double precision,
+  latitude_out double precision,
+  longitude_out double precision,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   
   -- Prevent overlapping exact checkins per day manually if needed, or just standard unique constraints

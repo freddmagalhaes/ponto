@@ -5,6 +5,9 @@ import { ptBR } from 'date-fns/locale';
 import { supabase } from '../services/supabase';
 import { useAuthStore } from '../store/useAuth';
 import { calculateDailyTimes, formatMinutesToTime, formatTime } from '../utils/time';
+import { Geolocation } from '@capacitor/geolocation';
+import { Capacitor } from '@capacitor/core';
+import { NativeBiometric } from '@capgo/capacitor-native-biometric';
 
 interface TimeRecord {
   id: string;
@@ -13,10 +16,85 @@ interface TimeRecord {
   worked_minutes: number;
 }
 
+// Helper to fetch Geolocation (supporting Native Mobile GPS and Browser Web Fallback)
+const getCoordinates = async (): Promise<{ latitude: number; longitude: number } | null> => {
+  try {
+    if (Capacitor.isNativePlatform()) {
+      const permission = await Geolocation.checkPermissions();
+      if (permission.location !== 'granted') {
+        const request = await Geolocation.requestPermissions();
+        if (request.location !== 'granted') {
+          console.warn("Permissão de localização negada pelo usuário no mobile.");
+          return null;
+        }
+      }
+      const position = await Geolocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 10000
+      });
+      return {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude
+      };
+    } else {
+      return new Promise((resolve) => {
+        if (!navigator.geolocation) {
+          console.warn("Geolocalização não suportada neste navegador.");
+          resolve(null);
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            resolve({
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude
+            });
+          },
+          (error) => {
+            console.warn("Erro ao obter geolocalização na web:", error.message);
+            resolve(null);
+          },
+          { enableHighAccuracy: true, timeout: 10000 }
+        );
+      });
+    }
+  } catch (err) {
+    console.error("Erro geral ao obter coordenadas de geolocalização:", err);
+    return null;
+  }
+};
+
+// Helper for Biometrics Authentication (supporting FaceID/TouchID and falling back to Web check)
+const verifyBiometrics = async (): Promise<boolean> => {
+  try {
+    if (Capacitor.isNativePlatform()) {
+      const result = await NativeBiometric.isAvailable();
+      if (!result.isAvailable) {
+        return true; // Prossegue se o dispositivo não possuir biometria cadastrada
+      }
+      
+      await NativeBiometric.verifyIdentity({
+        reason: "Por favor, autentique-se para registrar o ponto.",
+        title: "Confirmação de Ponto",
+        subtitle: "Autenticação Híbrida",
+        description: "Validação biométrica necessária para registrar o horário de expediente."
+      });
+      return true;
+    } else {
+      return true; // Fallback na Web (confirmação direta)
+    }
+  } catch (err) {
+    console.warn("Erro ou cancelamento na autenticação biométrica:", err);
+    alert("Autenticação biométrica necessária para registrar o ponto.");
+    return false;
+  }
+};
+
 export default function Ponto() {
   const [time, setTime] = useState(new Date());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
   const [todayRecord, setTodayRecord] = useState<TimeRecord | null>(null);
   
   // Estado para o formulário manual
@@ -75,14 +153,30 @@ export default function Ponto() {
     const nowIso = new Date().toISOString();
 
     try {
+      // 1. Verificação Biométrica
+      setStatusMessage('Validando biometria...');
+      const bioPassed = await verifyBiometrics();
+      if (!bioPassed) {
+        setSaving(false);
+        setStatusMessage('');
+        return;
+      }
+
+      // 2. Coleta de Geolocalização (GPS)
+      setStatusMessage('Buscando localização...');
+      const coords = await getCoordinates();
+
       if (type === 'entrada') {
+        setStatusMessage('Registrando entrada...');
         const { data, error } = await supabase
           .from('time_records')
           .insert({
             employee_id: user.id,
             date: todayDateStr,
             check_in: nowIso,
-            source: 'manual'
+            source: 'manual',
+            latitude_in: coords?.latitude ?? null,
+            longitude_in: coords?.longitude ?? null
           })
           .select()
           .single();
@@ -91,18 +185,22 @@ export default function Ponto() {
         setTodayRecord(data);
       } else if (type === 'saida' && todayRecord) {
         // Calcula os tempos antes de salvar a saída
+        setStatusMessage('Calculando jornada...');
         const { workedMinutes, overtimeMinutes, nightMinutes } = calculateDailyTimes({
           checkIn: todayRecord.check_in,
           checkOut: nowIso
         });
 
+        setStatusMessage('Registrando saída...');
         const { data, error } = await supabase
           .from('time_records')
           .update({
             check_out: nowIso,
             worked_minutes: workedMinutes,
             overtime_minutes: overtimeMinutes,
-            night_minutes: nightMinutes
+            night_minutes: nightMinutes,
+            latitude_out: coords?.latitude ?? null,
+            longitude_out: coords?.longitude ?? null
           })
           .eq('id', todayRecord.id)
           .select()
@@ -115,6 +213,7 @@ export default function Ponto() {
       alert("Erro ao registrar o ponto: " + e.message);
     } finally {
       setSaving(false);
+      setStatusMessage('');
     }
   };
 
@@ -291,10 +390,15 @@ export default function Ponto() {
         </>
       )}
 
-      <div className="mt-8 w-full max-w-md bg-card border border-border rounded-xl p-6 shadow-sm">
+       <div className="mt-8 w-full max-w-md bg-card border border-border rounded-xl p-6 shadow-sm">
          <h3 className="font-semibold text-lg border-b border-border pb-3 mb-4 flex items-center justify-between">
             Registro de Hoje 
-            {(saving || loading) && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+            {(saving || loading) && (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-normal">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                <span>{statusMessage || 'Carregando...'}</span>
+              </div>
+            )}
          </h3>
          <div className="flex justify-between items-center py-2">
            <span className="text-muted-foreground font-medium">Entrada</span>
