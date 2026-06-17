@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PontoApp</string>
+    <string name="title_activity_main">PontoApp</string>
+    <string name="package_name">com.freddmagalhaes.ponto</string>
+    <string name="custom_url_scheme">com.freddmagalhaes.ponto</string>
+</resources>
