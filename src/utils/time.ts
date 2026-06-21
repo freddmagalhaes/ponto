@@ -123,3 +123,24 @@ export const formatTime = (date: string | Date | null): string => {
   if (!d) return '--:--';
   return format(d, "HH:mm");
 };
+
+export interface PayrollPeriod {
+  startDate: Date;
+  endDate: Date;
+  startDateStr: string;
+  endDateStr: string;
+}
+
+export const getPayrollPeriod = (year: number, month: number): PayrollPeriod => {
+  // JS/TS Date: month is 0-indexed (0 = January, 5 = June).
+  // The payroll period for June (5) starts on May 20th and ends on June 19th.
+  const startDate = new Date(year, month - 1, 20);
+  const endDate = new Date(year, month, 19);
+  
+  return {
+    startDate,
+    endDate,
+    startDateStr: format(startDate, 'yyyy-MM-dd'),
+    endDateStr: format(endDate, 'yyyy-MM-dd')
+  };
+};

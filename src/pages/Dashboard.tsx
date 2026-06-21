@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../services/supabase';
-import { format, endOfMonth, getDaysInMonth, setDate } from 'date-fns';
-import { formatMinutesToTime } from '../utils/time';
+import { format } from 'date-fns';
+import { formatMinutesToTime, getPayrollPeriod } from '../utils/time';
 
 export default function Dashboard() {
   const [month, setMonth] = useState<number>(new Date().getMonth());
@@ -13,7 +13,12 @@ export default function Dashboard() {
     workedMinutes: 0,
     overtimeMinutes: 0,
     nightMinutes: 0,
-    employeeCount: 0
+    employeeCount: 0,
+    overtimePaid: 0,
+    overtimeCompensated: 0,
+    overtimePending: 0,
+    nightPaid: 0,
+    nightPending: 0
   });
   const [chartData, setChartData] = useState<{ name: string, hours: number }[]>([]);
 
@@ -50,16 +55,14 @@ export default function Dashboard() {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const baseDate = new Date(year, month, 1);
-      const firstDayStr = format(baseDate, 'yyyy-MM-dd');
-      const lastDayStr = format(endOfMonth(baseDate), 'yyyy-MM-dd');
+      const period = getPayrollPeriod(year, month);
 
-      // Fetch all time records for the current month based on the literal 'date'
+      // Fetch all time records for the custom period based on the literal 'date'
       const { data: recordsData, error: recordsError } = await supabase
         .from('time_records')
         .select('*')
-        .gte('date', firstDayStr)
-        .lte('date', lastDayStr);
+        .gte('date', period.startDateStr)
+        .lte('date', period.endDateStr);
 
       if (recordsError) throw recordsError;
 
@@ -74,12 +77,36 @@ export default function Dashboard() {
       let totalWorked = 0;
       let totalOvertime = 0;
       let totalNight = 0;
+      
+      let overtimePaid = 0;
+      let overtimeCompensated = 0;
+      let overtimePending = 0;
+      let nightPaid = 0;
+      let nightPending = 0;
 
       if (recordsData) {
         recordsData.forEach(record => {
           totalWorked += record.worked_minutes || 0;
           totalOvertime += record.overtime_minutes || 0;
           totalNight += record.night_minutes || 0;
+
+          // Categoriza minutos de horas extras
+          const otMins = record.overtime_minutes || 0;
+          if (record.overtime_status === 'paid') {
+            overtimePaid += otMins;
+          } else if (record.overtime_status === 'compensated') {
+            overtimeCompensated += otMins;
+          } else {
+            overtimePending += otMins;
+          }
+
+          // Categoriza minutos noturnos
+          const ntMins = record.night_minutes || 0;
+          if (record.night_status === 'paid') {
+            nightPaid += ntMins;
+          } else {
+            nightPending += ntMins;
+          }
         });
       }
 
@@ -87,19 +114,25 @@ export default function Dashboard() {
         workedMinutes: totalWorked,
         overtimeMinutes: totalOvertime,
         nightMinutes: totalNight,
-        employeeCount: empCount || 0
+        employeeCount: empCount || 0,
+        overtimePaid,
+        overtimeCompensated,
+        overtimePending,
+        nightPaid,
+        nightPending
       });
 
-      // Prepare Chart Data for the whole month
-      const daysInMonth = getDaysInMonth(baseDate);
-      const monthDays = Array.from({ length: daysInMonth }, (_, i) => {
-        const d = setDate(baseDate, i + 1);
-        return {
-          dateStr: format(d, 'yyyy-MM-dd'),
-          name: format(d, 'dd/MM'),
+      // Prepare Chart Data for the custom period (from startDate to endDate)
+      const monthDays: any[] = [];
+      const current = new Date(period.startDate);
+      while (current <= period.endDate) {
+        monthDays.push({
+          dateStr: format(current, 'yyyy-MM-dd'),
+          name: format(current, 'dd/MM'),
           hours: 0
-        };
-      });
+        });
+        current.setDate(current.getDate() + 1);
+      }
 
       if (recordsData) {
         recordsData.forEach(record => {
@@ -137,10 +170,19 @@ export default function Dashboard() {
      </div>;
   }
 
+  const period = getPayrollPeriod(year, month);
+  const formattedStart = format(period.startDate, 'dd/MM/yyyy');
+  const formattedEnd = format(period.endDate, 'dd/MM/yyyy');
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Período de Apuração: <span className="font-semibold text-foreground">{formattedStart}</span> a <span className="font-semibold text-foreground">{formattedEnd}</span>
+          </p>
+        </div>
         <div className="flex gap-2">
           <select 
             value={month} 
@@ -165,7 +207,7 @@ export default function Dashboard() {
       
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-card p-6 rounded-xl border border-border shadow-sm">
-          <p className="text-sm font-medium text-muted-foreground">Horas Trabalhadas (Mês)</p>
+          <p className="text-sm font-medium text-muted-foreground">Horas Trabalhadas (Período)</p>
           <p className="text-3xl font-bold text-foreground mt-2">{formatMinutesToTime(stats.workedMinutes)}</p>
         </div>
         <div className="bg-card p-6 rounded-xl border border-border shadow-sm">
@@ -183,7 +225,7 @@ export default function Dashboard() {
       </div>
 
       <div className="bg-card p-6 rounded-xl border border-border shadow-sm h-80">
-        <h2 className="text-lg font-semibold mb-4">Horas Trabalhadas (Mensal)</h2>
+        <h2 className="text-lg font-semibold mb-4 font-sans text-foreground">Horas Trabalhadas (Período de Apuração)</h2>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
@@ -197,6 +239,55 @@ export default function Dashboard() {
             <Bar dataKey="hours" fill="var(--primary)" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
+      </div>
+
+      {/* Painel de Horas Extras e Adicional Noturno Pagos/Pendentes */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+        <div className="bg-card p-6 rounded-xl border border-border shadow-sm">
+          <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+            Status de Horas Extras (Período)
+          </h3>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center border-b border-border/40 pb-2">
+              <span className="text-muted-foreground font-medium flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-green-500" /> Pagas
+              </span>
+              <span className="font-bold text-foreground">{formatMinutesToTime(stats.overtimePaid, true)}</span>
+            </div>
+            <div className="flex justify-between items-center border-b border-border/40 pb-2">
+              <span className="text-muted-foreground font-medium flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-teal-500" /> Compensadas (Banco)
+              </span>
+              <span className="font-bold text-foreground">{formatMinutesToTime(stats.overtimeCompensated, true)}</span>
+            </div>
+            <div className="flex justify-between items-center pb-1">
+              <span className="text-muted-foreground font-medium flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Pendentes / A Pagar
+              </span>
+              <span className="font-bold text-amber-600 dark:text-amber-400">{formatMinutesToTime(stats.overtimePending, true)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-card p-6 rounded-xl border border-border shadow-sm">
+          <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+            Status de Adicional Noturno (Período)
+          </h3>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center border-b border-border/40 pb-2">
+              <span className="text-muted-foreground font-medium flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-green-500" /> Pago
+              </span>
+              <span className="font-bold text-foreground">{formatMinutesToTime(stats.nightPaid, true)}</span>
+            </div>
+            <div className="flex justify-between items-center pb-1">
+              <span className="text-muted-foreground font-medium flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Pendente / A Pagar
+              </span>
+              <span className="font-bold text-amber-600 dark:text-amber-400">{formatMinutesToTime(stats.nightPending, true)}</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

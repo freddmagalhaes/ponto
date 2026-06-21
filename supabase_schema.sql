@@ -33,10 +33,15 @@ create table public.time_records (
   longitude_in double precision,
   latitude_out double precision,
   longitude_out double precision,
+  overtime_status text default 'pending'::text not null,
+  night_status text default 'pending'::text not null,
+  resolved_at timestamp with time zone,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   
   -- Prevent overlapping exact checkins per day manually if needed, or just standard unique constraints
-  unique(employee_id, date) 
+  unique(employee_id, date),
+  constraint check_overtime_status check (overtime_status in ('pending', 'paid', 'compensated')),
+  constraint check_night_status check (night_status in ('pending', 'paid'))
 );
 
 -- Turn on Row Level Security (RLS)

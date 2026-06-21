@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { useAuthStore } from '../store/useAuth';
-import { formatMinutesToTime, formatDateExtensive, formatTime } from '../utils/time';
+import { formatMinutesToTime, formatDateExtensive, formatTime, getPayrollPeriod } from '../utils/time';
 import { Loader2, MapPin } from 'lucide-react';
 import { format, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -50,16 +50,14 @@ export default function MyRecords() {
     try {
       setLoading(true);
       
-      const baseDate = new Date(year, month, 1);
-      const startDateStr = format(baseDate, 'yyyy-MM-dd');
-      const endDateStr = format(endOfMonth(baseDate), 'yyyy-MM-dd');
+      const period = getPayrollPeriod(year, month);
 
       const { data, error } = await supabase
         .from('time_records')
         .select('*')
         .eq('employee_id', user?.id)
-        .gte('date', startDateStr)
-        .lte('date', endDateStr)
+        .gte('date', period.startDateStr)
+        .lte('date', period.endDateStr)
         .order('date', { ascending: false });
 
       if (error) throw error;
@@ -73,24 +71,28 @@ export default function MyRecords() {
 
   const handleExportPDF = () => {
     if (!records || records.length === 0) {
-      alert("Não há registros para exportar neste mês.");
+      alert("Não há registros para exportar neste período.");
       return;
     }
 
     const doc = new jsPDF();
-    const monthName = months[month];
+    const period = getPayrollPeriod(year, month);
+    const formattedStart = format(period.startDate, 'dd/MM/yyyy');
+    const formattedEnd = format(period.endDate, 'dd/MM/yyyy');
     
     // Cabeçalho
     doc.setFontSize(18);
-    doc.text(`Relatório de Ponto - ${monthName} de ${year}`, 14, 22);
+    doc.text(`Relatório de Ponto - Ciclo de Fechamento`, 14, 20);
+    doc.setFontSize(12);
+    doc.text(`Período: ${formattedStart} a ${formattedEnd}`, 14, 27);
     
     // Info adicional
     doc.setFontSize(11);
-    doc.text(`Empresa: PontoApp`, 14, 30);
-    doc.text(`Funcionário: ${employeeData?.name || user?.user_metadata?.name || 'Não informado'}`, 14, 36);
-    doc.text(`Gerado em: ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`, 14, 42);
+    doc.text(`Empresa: PontoApp`, 14, 34);
+    doc.text(`Funcionário: ${employeeData?.name || user?.user_metadata?.name || 'Não informado'}`, 14, 40);
+    doc.text(`Gerado em: ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`, 14, 46);
 
-    const tableColumn = ["Data", "Entrada", "Saída", "Total", "Extra / Noturno", "Origem", "Localização"];
+    const tableColumn = ["Data", "Entrada", "Saída", "Total", "Extras (Status)", "Noturno (Status)", "Origem", "Localização"];
     const tableRows: any[] = [];
 
     records.forEach(record => {
@@ -98,17 +100,31 @@ export default function MyRecords() {
       const checkIn = formatTime(record.check_in);
       const checkOut = formatTime(record.check_out);
       const total = formatMinutesToTime(record.worked_minutes || 0);
-      const extraNight = `${formatMinutesToTime(record.overtime_minutes || 0)} / ${formatMinutesToTime(record.night_minutes || 0)}`;
-      const source = record.source === 'imported' ? 'Importado' : 'Manual';
-      const gpsStatus = record.latitude_in ? 'Com GPS' : 'Sem GPS';
       
-      tableRows.push([dateStr, checkIn, checkOut, total, extraNight, source, gpsStatus]);
+      // Overtime status display
+      let overtimeStr = formatMinutesToTime(record.overtime_minutes || 0);
+      if (record.overtime_minutes > 0) {
+        const otStatus = record.overtime_status === 'paid' ? 'Pago' : record.overtime_status === 'compensated' ? 'Banco' : 'Pend.';
+        overtimeStr += ` (${otStatus})`;
+      }
+
+      // Night status display
+      let nightStr = formatMinutesToTime(record.night_minutes || 0);
+      if (record.night_minutes > 0) {
+        const ntStatus = record.night_status === 'paid' ? 'Pago' : 'Pend.';
+        nightStr += ` (${ntStatus})`;
+      }
+
+      const source = record.source === 'imported' ? 'Importado' : 'Manual';
+      const gpsStatus = record.latitude_in ? 'Sim' : 'Não';
+      
+      tableRows.push([dateStr, checkIn, checkOut, total, overtimeStr, nightStr, source, gpsStatus]);
     });
 
     autoTable(doc, {
       head: [tableColumn],
       body: tableRows,
-      startY: 48,
+      startY: 52,
       theme: 'grid',
       styles: { fontSize: 9, cellPadding: 3 },
       headStyles: { fillColor: [41, 128, 185], textColor: 255 },
@@ -141,10 +157,19 @@ export default function MyRecords() {
     'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
   ];
 
+  const period = getPayrollPeriod(year, month);
+  const formattedStart = format(period.startDate, 'dd/MM/yyyy');
+  const formattedEnd = format(period.endDate, 'dd/MM/yyyy');
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h1 className="text-3xl font-bold tracking-tight">Meus Registros</h1>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Meus Registros</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Período: <span className="font-semibold text-foreground">{formattedStart}</span> a <span className="font-semibold text-foreground">{formattedEnd}</span>
+          </p>
+        </div>
         <div className="flex gap-2">
           <select 
             value={month} 
@@ -212,11 +237,33 @@ export default function MyRecords() {
                       {formatMinutesToTime(record.worked_minutes || 0)}
                     </td>
                     <td className="px-6 py-4 text-muted-foreground">
-                      <span className={record.overtime_minutes > 0 ? "text-primary font-medium" : ""}>
-                        {formatMinutesToTime(record.overtime_minutes || 0)}
-                      </span>
-                      {" / "}
-                      {formatMinutesToTime(record.night_minutes || 0)}
+                      <div className="flex flex-col gap-1">
+                        {record.overtime_minutes > 0 && (
+                          <span className="flex items-center gap-1.5">
+                            <span className="font-semibold text-primary">{formatMinutesToTime(record.overtime_minutes)}</span>
+                            {record.overtime_status === 'paid' ? (
+                              <span className="px-1.5 py-0.5 bg-green-500/10 text-green-600 border border-green-500/20 rounded text-[10px] font-bold">Pago</span>
+                            ) : record.overtime_status === 'compensated' ? (
+                              <span className="px-1.5 py-0.5 bg-teal-500/10 text-teal-600 border border-teal-500/20 rounded text-[10px] font-bold">Banco</span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-600 border border-amber-500/20 rounded text-[10px] font-bold">Pendente</span>
+                            )}
+                          </span>
+                        )}
+                        {record.night_minutes > 0 && (
+                          <span className="flex items-center gap-1.5">
+                            <span className="font-medium text-foreground">{formatMinutesToTime(record.night_minutes)} Not.</span>
+                            {record.night_status === 'paid' ? (
+                              <span className="px-1.5 py-0.5 bg-green-500/10 text-green-600 border border-green-500/20 rounded text-[10px] font-bold">Pago</span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-600 border border-amber-500/20 rounded text-[10px] font-bold">Pendente</span>
+                            )}
+                          </span>
+                        )}
+                        {(!record.overtime_minutes && !record.night_minutes) && (
+                          <span className="text-xs text-muted-foreground/60 font-normal">--</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       {record.source === 'imported' ? (

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase, supabaseAdmin } from '../services/supabase';
-import { Loader2, Plus, X, Edit, Power, PowerOff, Key } from 'lucide-react';
+import { Loader2, Plus, X, Edit, Power, PowerOff, Key, ClipboardCheck } from 'lucide-react';
+import { getPayrollPeriod, formatMinutesToTime } from '../utils/time';
+import { format } from 'date-fns';
 
 export default function Employees() {
   const [employees, setEmployees] = useState<any[]>([]);
@@ -10,6 +12,96 @@ export default function Employees() {
   const [showModal, setShowModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // States for Payroll Closings / Hours Liquidation
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [selectedEmp, setSelectedEmp] = useState<any>(null);
+  const [closeMonth, setCloseMonth] = useState<number>(new Date().getMonth());
+  const [closeYear, setCloseYear] = useState<number>(new Date().getFullYear());
+  const [closeStats, setCloseStats] = useState({ overtimePending: 0, nightPending: 0 });
+  const [closeLoading, setCloseLoading] = useState(false);
+
+  useEffect(() => {
+    if (selectedEmp) {
+      fetchCloseStats(selectedEmp.id, closeYear, closeMonth);
+    }
+  }, [selectedEmp, closeMonth, closeYear]);
+
+  const fetchCloseStats = async (empId: string, yr: number, mth: number) => {
+    try {
+      setCloseLoading(true);
+      const period = getPayrollPeriod(yr, mth);
+      
+      const { data, error } = await supabase
+        .from('time_records')
+        .select('*')
+        .eq('employee_id', empId)
+        .gte('date', period.startDateStr)
+        .lte('date', period.endDateStr);
+        
+      if (error) throw error;
+      
+      let overtimePending = 0;
+      let nightPending = 0;
+      
+      if (data) {
+        data.forEach(r => {
+          if (r.overtime_status === 'pending') {
+            overtimePending += r.overtime_minutes || 0;
+          }
+          if (r.night_status === 'pending') {
+            nightPending += r.night_minutes || 0;
+          }
+        });
+      }
+      
+      setCloseStats({ overtimePending, nightPending });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setCloseLoading(false);
+    }
+  };
+
+  const handleLiquidate = async (type: 'pay_overtime' | 'compensate_overtime' | 'pay_night') => {
+    if (!selectedEmp) return;
+    setCloseLoading(true);
+    const period = getPayrollPeriod(closeYear, closeMonth);
+    const nowIso = new Date().toISOString();
+    
+    try {
+      let updatePayload = {};
+      let queryField = '';
+      
+      if (type === 'pay_overtime') {
+        updatePayload = { overtime_status: 'paid', resolved_at: nowIso };
+        queryField = 'overtime_status';
+      } else if (type === 'compensate_overtime') {
+        updatePayload = { overtime_status: 'compensated', resolved_at: nowIso };
+        queryField = 'overtime_status';
+      } else if (type === 'pay_night') {
+        updatePayload = { night_status: 'paid', resolved_at: nowIso };
+        queryField = 'night_status';
+      }
+      
+      const { error } = await supabase
+        .from('time_records')
+        .update(updatePayload)
+        .eq('employee_id', selectedEmp.id)
+        .gte('date', period.startDateStr)
+        .lte('date', period.endDateStr)
+        .eq(queryField, 'pending');
+        
+      if (error) throw error;
+      
+      alert('Horas liquidadas com sucesso!');
+      fetchCloseStats(selectedEmp.id, closeYear, closeMonth);
+    } catch (e: any) {
+      alert('Erro ao liquidar horas: ' + e.message);
+    } finally {
+      setCloseLoading(false);
+    }
+  };
 
   // Form State (Create / Edit)
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -295,6 +387,89 @@ export default function Employees() {
           </div>
         </div>
       )}
+
+      {/* MODAL DE FECHAMENTO */}
+      {showCloseModal && selectedEmp && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-card w-full max-w-lg rounded-xl shadow-lg border border-border p-6 relative animate-in zoom-in-95 duration-200">
+            <button 
+              onClick={() => { setShowCloseModal(false); setSelectedEmp(null); }}
+              className="absolute right-4 top-4 text-muted-foreground hover:text-foreground"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h2 className="text-xl font-bold mb-1">Fechamento de Ponto</h2>
+            <p className="text-sm text-muted-foreground mb-6">Funcionário: <span className="font-semibold text-foreground">{selectedEmp.name}</span></p>
+            
+            <div className="flex gap-2 mb-6">
+              <select 
+                value={closeMonth} 
+                onChange={(e) => setCloseMonth(Number(e.target.value))}
+                className="bg-background border border-input rounded-md px-3 py-2 text-sm flex-1 focus:ring-primary focus:ring-primary text-foreground"
+              >
+                {['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'].map((m, i) => (
+                  <option key={i} value={i}>{m}</option>
+                ))}
+              </select>
+              <select 
+                value={closeYear} 
+                onChange={(e) => setCloseYear(Number(e.target.value))}
+                className="bg-background border border-input rounded-md px-3 py-2 text-sm w-28 focus:ring-primary focus:border-primary text-foreground"
+              >
+                {[new Date().getFullYear() - 1, new Date().getFullYear(), new Date().getFullYear() + 1].map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+
+            {closeLoading ? (
+              <div className="py-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
+            ) : (
+              <div className="space-y-6">
+                <div className="bg-muted/40 border border-border rounded-xl p-4 space-y-4">
+                  <div className="flex justify-between items-center pb-2 border-b border-border/40">
+                    <span className="font-semibold text-foreground">Horas Extras Pendentes:</span>
+                    <span className="font-bold text-amber-600 dark:text-amber-400 text-lg">{formatMinutesToTime(closeStats.overtimePending, true)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-foreground">Adicional Noturno Pendente:</span>
+                    <span className="font-bold text-amber-600 dark:text-amber-400 text-lg">{formatMinutesToTime(closeStats.nightPending, true)}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">Ações de Fechamento</h4>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button 
+                      disabled={closeStats.overtimePending === 0}
+                      onClick={() => handleLiquidate('pay_overtime')}
+                      className="bg-primary text-primary-foreground font-medium py-2.5 px-4 rounded-lg text-sm shadow hover:bg-primary/95 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Pagar Horas Extras
+                    </button>
+                    <button 
+                      disabled={closeStats.overtimePending === 0}
+                      onClick={() => handleLiquidate('compensate_overtime')}
+                      className="bg-teal-600 hover:bg-teal-600/95 text-white font-medium py-2.5 px-4 rounded-lg text-sm shadow transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Compensar Extras (Banco)
+                    </button>
+                  </div>
+                  
+                  <button 
+                    disabled={closeStats.nightPending === 0}
+                    onClick={() => handleLiquidate('pay_night')}
+                    className="w-full bg-primary text-primary-foreground font-medium py-2.5 px-4 rounded-lg text-sm shadow hover:bg-primary/95 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Pagar Adicional Noturno
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       
       <div className="bg-card rounded-xl border border-border shadow-sm overflow-x-auto">
         <table className="w-full text-sm text-left whitespace-nowrap min-w-max">
@@ -345,6 +520,14 @@ export default function Employees() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center justify-end gap-2">
+                      <button 
+                        onClick={() => { setSelectedEmp(emp); setShowCloseModal(true); }}
+                        className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-green-600 transition-colors tooltip"
+                        title="Fechamento de Ponto / Liquidação"
+                      >
+                        <ClipboardCheck className="w-4.5 h-4.5" />
+                      </button>
+
                       <button 
                         onClick={() => handleOpenEdit(emp)}
                         className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-primary transition-colors tooltip"
