@@ -100,8 +100,8 @@ export default function Import() {
 
       setResult({ success: successCount, errors });
 
-    } catch (e: any) {
-      alert("Erro ao ler o arquivo: " + e.message);
+    } catch (e) {
+      alert("Erro ao ler o arquivo: " + (e as Error).message);
     } finally {
       setProcessing(false);
     }

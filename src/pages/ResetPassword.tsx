@@ -39,8 +39,8 @@ export default function ResetPassword() {
       setTimeout(() => {
         navigate('/login');
       }, 3000);
-    } catch (err: any) {
-      setError(err.message || 'Falha ao atualizar senha');
+    } catch (err) {
+      setError((err as Error).message || 'Falha ao atualizar senha');
     } finally {
       setLoading(false);
     }

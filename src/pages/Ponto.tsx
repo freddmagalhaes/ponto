@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Play, Square, Loader2, Save, X, CalendarPlus } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -83,7 +83,7 @@ const verifyBiometrics = async (): Promise<boolean> => {
     } else {
       return true; // Fallback na Web (confirmação direta)
     }
-  } catch (err) {
+  } catch (err: unknown) {
     console.warn("Erro ou cancelamento na autenticação biométrica:", err);
     alert("Autenticação biométrica necessária para registrar o ponto.");
     return false;
@@ -91,6 +91,9 @@ const verifyBiometrics = async (): Promise<boolean> => {
 };
 
 export default function Ponto() {
+  const { user } = useAuthStore();
+  const todayDateStr = format(new Date(), 'yyyy-MM-dd');
+
   const [time, setTime] = useState(new Date());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -99,32 +102,11 @@ export default function Ponto() {
   
   // Estado para o formulário manual
   const [showManualForm, setShowManualForm] = useState(false);
-  const [manualDate, setManualDate] = useState('');
+  const [manualDate, setManualDate] = useState(todayDateStr);
   const [manualCheckIn, setManualCheckIn] = useState('08:00');
   const [manualCheckOut, setManualCheckOut] = useState('18:00');
 
-  const { user } = useAuthStore();
-  
-  const todayDateStr = format(new Date(), 'yyyy-MM-dd');
-
-  useEffect(() => {
-    setManualDate(todayDateStr);
-  }, [todayDateStr]);
-
-  useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    if (user && user.id && !user.id.startsWith('mock')) {
-      fetchTodayRecord();
-    } else {
-      setLoading(false); // Para o carregamento se for usuário de teste
-    }
-  }, [user]);
-
-  const fetchTodayRecord = async () => {
+  const fetchTodayRecord = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('time_records')
@@ -136,12 +118,25 @@ export default function Ponto() {
       if (!error && data) {
         setTodayRecord(data);
       }
-    } catch (e) {
+    } catch (e: unknown) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, todayDateStr]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (user && user.id && !user.id.startsWith('mock')) {
+      Promise.resolve().then(() => fetchTodayRecord());
+    } else {
+      setTimeout(() => setLoading(false), 0);
+    }
+  }, [user, fetchTodayRecord]);
 
   const handleBaterPonto = async (type: 'entrada' | 'saida') => {
     if (!user || user.id.startsWith('mock')) {
@@ -209,8 +204,8 @@ export default function Ponto() {
         if (error) throw error;
         setTodayRecord(data);
       }
-    } catch (e: any) {
-      alert("Erro ao registrar o ponto: " + e.message);
+    } catch (e) {
+      alert("Erro ao registrar o ponto: " + (e as Error).message);
     } finally {
       setSaving(false);
       setStatusMessage('');
@@ -270,8 +265,8 @@ export default function Ponto() {
       }
       alert('Registro manual salvo com sucesso!');
       setShowManualForm(false);
-    } catch (e: any) {
-      alert("Erro ao salvar registro manual: " + e.message);
+    } catch (e) {
+      alert("Erro ao salvar registro manual: " + (e as Error).message);
     } finally {
       setSaving(false);
     }

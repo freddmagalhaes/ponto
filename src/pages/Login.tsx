@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuth';
 import { supabase } from '../services/supabase';
+import type { User, Session } from '@supabase/supabase-js';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -24,12 +25,12 @@ export default function Login() {
       if (error) {
         // TEMPORÁRIO PARA TESTE DA INTERFACE:
         if (email === 'admin@teste.com' && password === '123456') {
-          setUser({ id: 'mock-1', email } as any, { access_token: 'mock' } as any);
+          setUser({ id: 'mock-1', email } as unknown as User, { access_token: 'mock' } as unknown as Session);
           setEmployeeData({ id: 'mock-1', name: 'Administrador Teste', email, role: 'admin', position: 'Gerente', created_at: new Date().toISOString() });
           return;
         }
         if (email === 'user@teste.com' && password === '123456') {
-          setUser({ id: 'mock-2', email } as any, { access_token: 'mock' } as any);
+          setUser({ id: 'mock-2', email } as unknown as User, { access_token: 'mock' } as unknown as Session);
           setEmployeeData({ id: 'mock-2', name: 'Funcionário Comum', email, role: 'user', position: 'Analista', created_at: new Date().toISOString() });
           return;
         }
@@ -51,8 +52,8 @@ export default function Login() {
         setEmployeeData(empData);
       }
       
-    } catch (err: any) {
-      setError(err.message || 'Falha ao fazer login');
+    } catch (err) {
+      setError((err as Error).message || 'Falha ao fazer login');
     } finally {
       setLoading(false);
     }

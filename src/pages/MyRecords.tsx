@@ -1,16 +1,36 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { useAuthStore } from '../store/useAuth';
 import { formatMinutesToTime, formatDateExtensive, formatTime, getPayrollPeriod } from '../utils/time';
 import { Loader2, MapPin } from 'lucide-react';
-import { format, endOfMonth } from 'date-fns';
+import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+interface TimeRecord {
+  id: string;
+  employee_id: string;
+  date: string;
+  check_in: string;
+  check_out: string | null;
+  worked_minutes: number;
+  overtime_minutes: number;
+  overtime_status: 'pending' | 'paid' | 'compensated';
+  night_minutes: number;
+  night_status: 'pending' | 'paid';
+  source: 'manual' | 'imported';
+  latitude_in: number | null;
+  longitude_in: number | null;
+  latitude_out: number | null;
+  longitude_out: number | null;
+  resolved_at: string | null;
+  created_at: string;
+}
+
 export default function MyRecords() {
   const { user, employeeData } = useAuthStore();
-  const [records, setRecords] = useState<any[]>([]);
+  const [records, setRecords] = useState<TimeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState<number>(new Date().getMonth());
   const [year, setYear] = useState<number>(new Date().getFullYear());
@@ -36,17 +56,7 @@ export default function MyRecords() {
     fetchServerDate();
   }, []);
 
-  useEffect(() => {
-    if (!isDateInitialized) return;
-    
-    if (user && !user.id.startsWith('mock')) {
-      fetchRecords();
-    } else {
-      setLoading(false);
-    }
-  }, [user, month, year, isDateInitialized]);
-
-  const fetchRecords = async () => {
+  const fetchRecords = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -61,13 +71,23 @@ export default function MyRecords() {
         .order('date', { ascending: false });
 
       if (error) throw error;
-      setRecords(data || []);
+      setRecords((data as unknown as TimeRecord[]) || []);
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, year, month]);
+
+  useEffect(() => {
+    if (!isDateInitialized) return;
+    
+    if (user && !user.id.startsWith('mock')) {
+      Promise.resolve().then(() => fetchRecords());
+    } else {
+      setTimeout(() => setLoading(false), 0);
+    }
+  }, [user, month, year, isDateInitialized, fetchRecords]);
 
   const handleExportPDF = () => {
     if (!records || records.length === 0) {
@@ -93,7 +113,7 @@ export default function MyRecords() {
     doc.text(`Gerado em: ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`, 14, 46);
 
     const tableColumn = ["Data", "Entrada", "Saída", "Total", "Extras (Status)", "Noturno (Status)", "Origem", "Localização"];
-    const tableRows: any[] = [];
+    const tableRows: (string | null)[][] = [];
 
     records.forEach(record => {
       const dateStr = formatDateExtensive(record.date);
@@ -131,7 +151,7 @@ export default function MyRecords() {
       margin: { bottom: 60 } // Garante espaço no rodapé para que a assinatura não fique sozinha numa página
     });
 
-    const finalY = (doc as any).lastAutoTable.finalY || 150;
+    const finalY = (doc as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || 150;
     let currentY = finalY + 25;
 
     doc.setFontSize(10);

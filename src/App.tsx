@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { supabase } from './services/supabase';
 import { useAuthStore } from './store/useAuth';
 import { useThemeStore } from './store/useTheme';
@@ -22,6 +22,24 @@ import ResetPassword from './pages/ResetPassword';
 export default function App() {
   const { user, isLoading, setUser, setLoading, setEmployeeData } = useAuthStore();
   const { theme } = useThemeStore();
+
+  const fetchEmployee = useCallback(async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('*')
+        .eq('id', userId)
+        .single();
+        
+      if (!error && data) {
+        setEmployeeData(data);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }, [setEmployeeData, setLoading]);
 
   useEffect(() => {
     // Aplica o tema salvo no carregamento
@@ -57,25 +75,7 @@ export default function App() {
     );
 
     return () => subscription.unsubscribe();
-  }, [setUser, setLoading]);
-
-  const fetchEmployee = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('employees')
-        .select('*')
-        .eq('id', userId)
-        .single();
-        
-      if (!error && data) {
-        setEmployeeData(data);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [setUser, setLoading, fetchEmployee, theme]);
 
   if (isLoading) {
     return (

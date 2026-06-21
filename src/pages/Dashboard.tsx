@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../services/supabase';
 import { format } from 'date-fns';
@@ -46,13 +46,7 @@ export default function Dashboard() {
     fetchServerDate();
   }, []);
 
-  useEffect(() => {
-    if (isDateInitialized) {
-      fetchDashboardData();
-    }
-  }, [month, year, isDateInitialized]);
-
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
       const period = getPayrollPeriod(year, month);
@@ -123,7 +117,7 @@ export default function Dashboard() {
       });
 
       // Prepare Chart Data for the custom period (from startDate to endDate)
-      const monthDays: any[] = [];
+      const monthDays: { dateStr: string; name: string; hours: number }[] = [];
       const current = new Date(period.startDate);
       while (current <= period.endDate) {
         monthDays.push({
@@ -155,7 +149,13 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [year, month]);
+
+  useEffect(() => {
+    if (isDateInitialized) {
+      Promise.resolve().then(() => fetchDashboardData());
+    }
+  }, [month, year, isDateInitialized, fetchDashboardData]);
 
   if (loading) {
      return <div className="animate-pulse space-y-6">
@@ -234,7 +234,7 @@ export default function Dashboard() {
             <Tooltip 
               cursor={{fill: 'var(--muted)'}}
               contentStyle={{backgroundColor: 'var(--card)', borderColor: 'var(--border)'}} 
-              formatter={(value: any) => [`${value}h`, 'Horas']}
+              formatter={(value: number | string) => [`${value}h`, 'Horas']}
             />
             <Bar dataKey="hours" fill="var(--primary)" radius={[4, 4, 0, 0]} />
           </BarChart>

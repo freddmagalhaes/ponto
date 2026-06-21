@@ -22,8 +22,8 @@ export default function ForgotPassword() {
       if (error) throw error;
 
       setMessage('E-mail de recuperação enviado! Verifique sua caixa de entrada.');
-    } catch (err: any) {
-      setError(err.message || 'Falha ao solicitar recuperação de senha');
+    } catch (err) {
+      setError((err as Error).message || 'Falha ao solicitar recuperação de senha');
     } finally {
       setLoading(false);
     }

@@ -17,7 +17,7 @@ const REGULAR_WORK_HOURS_MINUTES = 8 * 60; // 8 horas
 /**
  * Normaliza um objeto, transformando string em Data válida se necessário.
  */
-const toDate = (date: string | Date): Date | null => {
+const toDate = (date: string | Date | null | undefined): Date | null => {
   if (!date) return null;
   const parsed = typeof date === 'string' ? parseISO(date) : date;
   return isValid(parsed) ? parsed : null;
@@ -49,8 +49,8 @@ export const calculateDailyTimes = ({ checkIn, checkOut }: TimeCalculationOption
     nightMinutes: 0,
   };
 
-  const start = toDate(checkIn as any);
-  const end = toDate(checkOut as any);
+  const start = toDate(checkIn);
+  const end = toDate(checkOut);
 
   if (!start || !end) {
     return defaultResult;
@@ -113,13 +113,13 @@ export const formatMinutesToTime = (minutes: number, verbose = false): string =>
 };
 
 export const formatDateExtensive = (date: string | Date | null): string => {
-  const d = toDate(date as any);
+  const d = toDate(date);
   if (!d) return '--';
   return format(d, "dd/MM/yyyy");
 };
 
 export const formatTime = (date: string | Date | null): string => {
-  const d = toDate(date as any);
+  const d = toDate(date);
   if (!d) return '--:--';
   return format(d, "HH:mm");
 };

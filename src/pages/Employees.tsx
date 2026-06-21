@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase, supabaseAdmin } from '../services/supabase';
 import { Loader2, Plus, X, Edit, Power, PowerOff, Key, ClipboardCheck } from 'lucide-react';
 import { getPayrollPeriod, formatMinutesToTime } from '../utils/time';
-import { format } from 'date-fns';
+import type { Employee } from '../store/useAuth';
 
 export default function Employees() {
-  const [employees, setEmployees] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Modals state
@@ -15,19 +15,13 @@ export default function Employees() {
 
   // States for Payroll Closings / Hours Liquidation
   const [showCloseModal, setShowCloseModal] = useState(false);
-  const [selectedEmp, setSelectedEmp] = useState<any>(null);
+  const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
   const [closeMonth, setCloseMonth] = useState<number>(new Date().getMonth());
   const [closeYear, setCloseYear] = useState<number>(new Date().getFullYear());
   const [closeStats, setCloseStats] = useState({ overtimePending: 0, nightPending: 0 });
   const [closeLoading, setCloseLoading] = useState(false);
 
-  useEffect(() => {
-    if (selectedEmp) {
-      fetchCloseStats(selectedEmp.id, closeYear, closeMonth);
-    }
-  }, [selectedEmp, closeMonth, closeYear]);
-
-  const fetchCloseStats = async (empId: string, yr: number, mth: number) => {
+  const fetchCloseStats = useCallback(async (empId: string, yr: number, mth: number) => {
     try {
       setCloseLoading(true);
       const period = getPayrollPeriod(yr, mth);
@@ -61,7 +55,13 @@ export default function Employees() {
     } finally {
       setCloseLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (selectedEmp) {
+      Promise.resolve().then(() => fetchCloseStats(selectedEmp.id, closeYear, closeMonth));
+    }
+  }, [selectedEmp, closeMonth, closeYear, fetchCloseStats]);
 
   const handleLiquidate = async (type: 'pay_overtime' | 'compensate_overtime' | 'pay_night') => {
     if (!selectedEmp) return;
@@ -96,8 +96,8 @@ export default function Employees() {
       
       alert('Horas liquidadas com sucesso!');
       fetchCloseStats(selectedEmp.id, closeYear, closeMonth);
-    } catch (e: any) {
-      alert('Erro ao liquidar horas: ' + e.message);
+    } catch (e) {
+      alert('Erro ao liquidar horas: ' + (e as Error).message);
     } finally {
       setCloseLoading(false);
     }
@@ -112,11 +112,7 @@ export default function Employees() {
   const [journeyStart, setJourneyStart] = useState('08:00');
   const [journeyEnd, setJourneyEnd] = useState('18:00');
 
-  useEffect(() => {
-    fetchEmployees();
-  }, []);
-
-  const fetchEmployees = async () => {
+  const fetchEmployees = useCallback(async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -125,13 +121,17 @@ export default function Employees() {
         .order('name');
       
       if (error) throw error;
-      setEmployees(data || []);
+      setEmployees((data as unknown as Employee[]) || []);
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    Promise.resolve().then(() => fetchEmployees());
+  }, [fetchEmployees]);
 
   const resetForm = () => {
     setName('');
@@ -148,7 +148,7 @@ export default function Employees() {
     setShowModal(true);
   };
 
-  const handleOpenEdit = (emp: any) => {
+  const handleOpenEdit = (emp: Employee) => {
     resetForm();
     setEditingId(emp.id);
     setName(emp.name || '');
@@ -195,8 +195,8 @@ export default function Employees() {
       setShowModal(false);
       resetForm();
       fetchEmployees();
-    } catch (e: any) {
-      alert("Erro ao criar: " + e.message);
+    } catch (e) {
+      alert("Erro ao criar: " + (e as Error).message);
     } finally {
       setSaving(false);
     }
@@ -225,8 +225,8 @@ export default function Employees() {
       setShowEditModal(false);
       resetForm();
       fetchEmployees();
-    } catch (e: any) {
-      alert("Erro ao atualizar: " + e.message);
+    } catch (e) {
+      alert("Erro ao atualizar: " + (e as Error).message);
     } finally {
       setSaving(false);
     }
@@ -245,8 +245,8 @@ export default function Employees() {
 
       if (error) throw error;
       alert("E-mail de redefinição enviado com sucesso!");
-    } catch (e: any) {
-      alert("Erro ao enviar e-mail: " + e.message);
+    } catch (e) {
+      alert("Erro ao enviar e-mail: " + (e as Error).message);
     } finally {
       setLoading(false);
     }
@@ -267,8 +267,8 @@ export default function Employees() {
 
       if (error) throw error;
       fetchEmployees();
-    } catch (e: any) {
-      alert("Erro ao mudar status: " + e.message);
+    } catch (e) {
+      alert("Erro ao mudar status: " + (e as Error).message);
       setLoading(false);
     }
   };

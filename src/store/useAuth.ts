@@ -9,6 +9,9 @@ export interface Employee {
   role: 'admin' | 'user';
   position: string;
   created_at: string;
+  journey_start?: string;
+  journey_end?: string;
+  is_active?: boolean;
 }
 
 interface AuthState {
