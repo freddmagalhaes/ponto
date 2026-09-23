@@ -5,9 +5,6 @@ import { ptBR } from 'date-fns/locale';
 import { supabase } from '../services/supabase';
 import { useAuthStore } from '../store/useAuth';
 import { calculateDailyTimes, formatMinutesToTime, formatTime } from '../utils/time';
-import { Geolocation } from '@capacitor/geolocation';
-import { Capacitor } from '@capacitor/core';
-import { NativeBiometric } from '@capgo/capacitor-native-biometric';
 
 interface TimeRecord {
   id: string;
@@ -16,78 +13,37 @@ interface TimeRecord {
   worked_minutes: number;
 }
 
-// Helper to fetch Geolocation (supporting Native Mobile GPS and Browser Web Fallback)
+// Helper para obter geolocalização via API nativa Web do navegador (desktop e mobile)
 const getCoordinates = async (): Promise<{ latitude: number; longitude: number } | null> => {
   try {
-    if (Capacitor.isNativePlatform()) {
-      const permission = await Geolocation.checkPermissions();
-      if (permission.location !== 'granted') {
-        const request = await Geolocation.requestPermissions();
-        if (request.location !== 'granted') {
-          console.warn("Permissão de localização negada pelo usuário no mobile.");
-          return null;
-        }
+    return await new Promise((resolve) => {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        console.warn("Geolocalização não suportada neste navegador.");
+        resolve(null);
+        return;
       }
-      const position = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: true,
-        timeout: 10000
-      });
-      return {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude
-      };
-    } else {
-      return new Promise((resolve) => {
-        if (!navigator.geolocation) {
-          console.warn("Geolocalização não suportada neste navegador.");
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          });
+        },
+        (error) => {
+          console.warn("Erro ao obter geolocalização na web:", error.message);
           resolve(null);
-          return;
-        }
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            resolve({
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude
-            });
-          },
-          (error) => {
-            console.warn("Erro ao obter geolocalização na web:", error.message);
-            resolve(null);
-          },
-          { enableHighAccuracy: true, timeout: 10000 }
-        );
-      });
-    }
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    });
   } catch (err) {
     console.error("Erro geral ao obter coordenadas de geolocalização:", err);
     return null;
   }
 };
 
-// Helper for Biometrics Authentication (supporting FaceID/TouchID and falling back to Web check)
 const verifyBiometrics = async (): Promise<boolean> => {
-  try {
-    if (Capacitor.isNativePlatform()) {
-      const result = await NativeBiometric.isAvailable();
-      if (!result.isAvailable) {
-        return true; // Prossegue se o dispositivo não possuir biometria cadastrada
-      }
-      
-      await NativeBiometric.verifyIdentity({
-        reason: "Por favor, autentique-se para registrar o ponto.",
-        title: "Confirmação de Ponto",
-        subtitle: "Autenticação Híbrida",
-        description: "Validação biométrica necessária para registrar o horário de expediente."
-      });
-      return true;
-    } else {
-      return true; // Fallback na Web (confirmação direta)
-    }
-  } catch (err: unknown) {
-    console.warn("Erro ou cancelamento na autenticação biométrica:", err);
-    alert("Autenticação biométrica necessária para registrar o ponto.");
-    return false;
-  }
+  return true;
 };
 
 export default function Ponto() {
