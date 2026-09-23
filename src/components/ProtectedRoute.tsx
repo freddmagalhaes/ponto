@@ -21,6 +21,11 @@ export default function ProtectedRoute({ requiredRole }: ProtectedRouteProps) {
     return <Navigate to="/login" replace />;
   }
 
+  // Se a conta do funcionário estiver inativa, redireciona para login
+  if (employeeData && employeeData.is_active === false) {
+    return <Navigate to="/login" replace />;
+  }
+
   // Se uma função (role) específica for exigida e o usuário não a tiver, redireciona para o painel inicial
   if (requiredRole && employeeData?.role !== requiredRole) {
     return <Navigate to="/" replace />;

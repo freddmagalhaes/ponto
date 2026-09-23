@@ -1,7 +1,29 @@
 import { createClient } from '@supabase/supabase-js';
+import * as fs from 'fs';
 
-const sourceUrl = 'https://yldmtlllltmvqlcefzbb.supabase.co';
-const sourceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlsZG10bGxsbHRtdnFsY2VmemJiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3MDAxOTgsImV4cCI6MjA2NDI3NjE5OH0.K-zfje0wQOe1BPnPrYotRxdSy_x5Oh_sj3L81hFFnx8';
+const loadEnv = () => {
+  const env = {};
+  if (fs.existsSync('.env.local')) {
+    const lines = fs.readFileSync('.env.local', 'utf-8').split('\n');
+    for (const line of lines) {
+      const match = line.match(/^([^=]+)=(.*)$/);
+      if (match) {
+        env[match[1].trim()] = match[2].trim().replace(/^["']|["']$/g, '');
+      }
+    }
+  }
+  return env;
+};
+
+const localEnv = loadEnv();
+const sourceUrl = process.env.MIGRATE_SOURCE_URL || localEnv.MIGRATE_SOURCE_URL || '';
+const sourceKey = process.env.MIGRATE_SOURCE_KEY || localEnv.MIGRATE_SOURCE_KEY || '';
+
+if (!sourceUrl || !sourceKey) {
+  console.log('Credenciais de origem não configuradas em MIGRATE_SOURCE_URL / MIGRATE_SOURCE_KEY.');
+  process.exit(0);
+}
+
 const sourceDb = createClient(sourceUrl, sourceKey);
 
 async function checkData() {

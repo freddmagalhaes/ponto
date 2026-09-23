@@ -54,17 +54,64 @@ export default function Import() {
           continue;
         }
 
-        const [email, dateStr, checkInTime, checkOutTime] = parts.map(p => p.trim());
+        const [rawEmail, dateStr, checkInTime, checkOutTime] = parts.map(p => p.trim());
+        const email = rawEmail.toLowerCase();
         
-        const employeeId = emailMap.get(email.toLowerCase());
-        if (!employeeId) {
-          errors.push(`Linha ${i + 1}: E-mail não encontrado (${email}).`);
+        // Validação de formato de e-mail
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          errors.push(`Linha ${i + 1}: E-mail em formato inválido (${rawEmail}).`);
           continue;
         }
 
-        // Format datetimes (assuming date is YYYY-MM-DD and times are HH:mm)
-        const checkInIso = `${dateStr}T${checkInTime}:00`;
-        const checkOutIso = checkOutTime ? `${dateStr}T${checkOutTime}:00` : null;
+        const employeeId = emailMap.get(email);
+        if (!employeeId) {
+          errors.push(`Linha ${i + 1}: E-mail não encontrado no cadastro (${email}).`);
+          continue;
+        }
+
+        // Validação estrita de formato de data e horário
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+          errors.push(`Linha ${i + 1}: Data inválida (${dateStr}). Use AAAA-MM-DD.`);
+          continue;
+        }
+
+        const todayStr = new Date().toISOString().slice(0, 10);
+        if (dateStr > todayStr) {
+          errors.push(`Linha ${i + 1}: Não é permitido importar ponto em data futura (${dateStr}).`);
+          continue;
+        }
+
+        if (!/^\d{2}:\d{2}$/.test(checkInTime)) {
+          errors.push(`Linha ${i + 1}: Horário de entrada inválido (${checkInTime}). Use HH:mm.`);
+          continue;
+        }
+
+        if (checkOutTime && !/^\d{2}:\d{2}$/.test(checkOutTime)) {
+          errors.push(`Linha ${i + 1}: Horário de saída inválido (${checkOutTime}). Use HH:mm.`);
+          continue;
+        }
+
+        const checkInDate = new Date(`${dateStr}T${checkInTime}:00`);
+        if (isNaN(checkInDate.getTime())) {
+          errors.push(`Linha ${i + 1}: Data ou hora de entrada inválida.`);
+          continue;
+        }
+
+        let checkOutDate: Date | null = null;
+        if (checkOutTime) {
+          checkOutDate = new Date(`${dateStr}T${checkOutTime}:00`);
+          // Suporte para jornada que atravessa a meia-noite
+          if (checkOutTime < checkInTime) {
+            checkOutDate.setDate(checkOutDate.getDate() + 1);
+          }
+          if (isNaN(checkOutDate.getTime())) {
+            errors.push(`Linha ${i + 1}: Data ou hora de saída inválida.`);
+            continue;
+          }
+        }
+
+        const checkInIso = checkInDate.toISOString();
+        const checkOutIso = checkOutDate ? checkOutDate.toISOString() : null;
 
         let workedMinutes = 0, overtimeMinutes = 0, nightMinutes = 0;
 
@@ -80,8 +127,8 @@ export default function Import() {
           const { error: insertError } = await supabase.from('time_records').upsert({
             employee_id: employeeId,
             date: dateStr,
-            check_in: new Date(checkInIso).toISOString(),
-            check_out: checkOutIso ? new Date(checkOutIso).toISOString() : null,
+            check_in: checkInIso,
+            check_out: checkOutIso,
             worked_minutes: workedMinutes,
             overtime_minutes: overtimeMinutes,
             night_minutes: nightMinutes,
@@ -94,7 +141,7 @@ export default function Import() {
              successCount++;
           }
         } catch {
-           errors.push(`Linha ${i + 1}: Erro ao formatar data.`);
+           errors.push(`Linha ${i + 1}: Erro ao processar registro.`);
         }
       }
 

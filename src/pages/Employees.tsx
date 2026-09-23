@@ -162,15 +162,28 @@ export default function Employees() {
 
   const handleCreateEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanName = name.trim();
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanName) {
+      alert("Por favor, informe o nome do funcionário.");
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      alert("Por favor, informe um endereço de e-mail válido.");
+      return;
+    }
+
     setSaving(true);
     try {
       // 1. Usar o cliente supabaseAdmin para que o admin logado NÃO seja deslogado
       const { data, error } = await supabaseAdmin.auth.signUp({
-        email,
+        email: cleanEmail,
         password: 'Mudar123!', // Senha inicial padrão
         options: {
           data: {
-            full_name: name,
+            full_name: cleanName,
           }
         }
       });
@@ -182,11 +195,11 @@ export default function Employees() {
       if (data.user) {
         await supabase.from('employees')
           .update({ 
-            position, 
-            role, 
+            position: position.trim(), 
+            role: role === 'admin' ? 'admin' : 'user', 
             journey_start: journeyStart,
             journey_end: journeyEnd,
-            name // garante que atualizou
+            name: cleanName
           })
           .eq('id', data.user.id);
       }
@@ -206,14 +219,20 @@ export default function Employees() {
     e.preventDefault();
     if (!editingId) return;
 
+    const cleanName = name.trim();
+    if (!cleanName) {
+      alert("O nome não pode ficar em branco.");
+      return;
+    }
+
     setSaving(true);
     try {
       const { error } = await supabase
         .from('employees')
         .update({
-          name,
-          position,
-          role,
+          name: cleanName,
+          position: position.trim(),
+          role: role === 'admin' ? 'admin' : 'user',
           journey_start: journeyStart,
           journey_end: journeyEnd
         })
@@ -545,7 +564,7 @@ export default function Employees() {
                       </button>
 
                       <button 
-                        onClick={() => handleToggleStatus(emp.id, emp.is_active)}
+                        onClick={() => handleToggleStatus(emp.id, !!emp.is_active)}
                         className={`p-1.5 rounded-md transition-colors tooltip ${
                           emp.is_active 
                             ? "hover:bg-secondary text-muted-foreground hover:text-destructive" 

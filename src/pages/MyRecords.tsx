@@ -39,16 +39,20 @@ export default function MyRecords() {
   useEffect(() => {
     const fetchServerDate = async () => {
       try {
-        // Faz uma requisição leve para pegar o cabeçalho 'Date' do servidor
-        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/auth/v1/health`, { method: 'GET' });
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        if (!supabaseUrl) return;
+
+        const res = await fetch(`${supabaseUrl}/auth/v1/health`, { method: 'GET' });
         const serverDateStr = res.headers.get('date');
         if (serverDateStr) {
           const serverDate = new Date(serverDateStr);
-          setMonth(serverDate.getMonth());
-          setYear(serverDate.getFullYear());
+          if (!isNaN(serverDate.getTime())) {
+            setMonth(serverDate.getMonth());
+            setYear(serverDate.getFullYear());
+          }
         }
       } catch {
-        console.warn("Falha ao buscar data do servidor, usando data local.");
+        // Fallback silencioso para data local do dispositivo
       } finally {
         setIsDateInitialized(true);
       }
@@ -82,10 +86,10 @@ export default function MyRecords() {
   useEffect(() => {
     if (!isDateInitialized) return;
     
-    if (user && !user.id.startsWith('mock')) {
+    if (user && user.id) {
       Promise.resolve().then(() => fetchRecords());
     } else {
-      setTimeout(() => setLoading(false), 0);
+      Promise.resolve().then(() => setLoading(false));
     }
   }, [user, month, year, isDateInitialized, fetchRecords]);
 
@@ -298,7 +302,7 @@ export default function MyRecords() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex gap-2">
-                        {record.latitude_in && record.longitude_in && (
+                        {typeof record.latitude_in === 'number' && typeof record.longitude_in === 'number' && Number.isFinite(record.latitude_in) && Number.isFinite(record.longitude_in) && (
                           <a 
                             href={`https://www.google.com/maps?q=${record.latitude_in},${record.longitude_in}`} 
                             target="_blank" 
@@ -310,7 +314,7 @@ export default function MyRecords() {
                             <span className="text-xs">Ent.</span>
                           </a>
                         )}
-                        {record.latitude_out && record.longitude_out && (
+                        {typeof record.latitude_out === 'number' && typeof record.longitude_out === 'number' && Number.isFinite(record.latitude_out) && Number.isFinite(record.longitude_out) && (
                           <a 
                             href={`https://www.google.com/maps?q=${record.latitude_out},${record.longitude_out}`} 
                             target="_blank" 
@@ -322,7 +326,7 @@ export default function MyRecords() {
                             <span className="text-xs">Saí.</span>
                           </a>
                         )}
-                        {!record.latitude_in && !record.latitude_out && (
+                        {!Number.isFinite(record.latitude_in) && !Number.isFinite(record.latitude_out) && (
                           <span className="text-xs text-muted-foreground/60 font-normal">Sem GPS</span>
                         )}
                       </div>

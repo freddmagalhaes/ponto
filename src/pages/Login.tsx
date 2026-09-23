@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuth';
 import { supabase } from '../services/supabase';
-import type { User, Session } from '@supabase/supabase-js';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -17,28 +16,15 @@ export default function Login() {
     setError('');
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
         password,
       });
 
-      if (error) {
-        // TEMPORÁRIO PARA TESTE DA INTERFACE:
-        if (email === 'admin@teste.com' && password === '123456') {
-          setUser({ id: 'mock-1', email } as unknown as User, { access_token: 'mock' } as unknown as Session);
-          setEmployeeData({ id: 'mock-1', name: 'Administrador Teste', email, role: 'admin', position: 'Gerente', created_at: new Date().toISOString() });
-          return;
-        }
-        if (email === 'user@teste.com' && password === '123456') {
-          setUser({ id: 'mock-2', email } as unknown as User, { access_token: 'mock' } as unknown as Session);
-          setEmployeeData({ id: 'mock-2', name: 'Funcionário Comum', email, role: 'user', position: 'Analista', created_at: new Date().toISOString() });
-          return;
-        }
-        throw error;
+      if (authError) {
+        throw authError;
       }
-      
-      setUser(data.user, data.session);
-      
+
       // Fetch employee data
       const { data: empData, error: empError } = await supabase
         .from('employees')
@@ -46,8 +32,20 @@ export default function Login() {
         .eq('id', data.user.id)
         .single();
         
-      if (empError) console.error("Could not fetch employee profile:", empError);
+      if (empError) {
+        console.error("Could not fetch employee profile:", empError);
+      }
       
+      // Verifica se a conta está ativa
+      if (empData && empData.is_active === false) {
+        await supabase.auth.signOut();
+        setUser(null, null);
+        setEmployeeData(null);
+        setError('Esta conta foi desativada. Entre em contato com o administrador.');
+        return;
+      }
+
+      setUser(data.user, data.session);
       if (empData) {
         setEmployeeData(empData);
       }
@@ -109,12 +107,6 @@ export default function Login() {
         >
           {loading ? 'Entrando...' : 'Entrar'}
         </button>
-
-        <div className="mt-4 text-xs bg-muted p-3 rounded-md border border-border">
-          <p className="font-semibold mb-1 text-foreground">Contas de Teste (Mock):</p>
-          <p>Admin: <span className="font-mono">admin@teste.com</span> / <span className="font-mono">123456</span></p>
-          <p>Comum: <span className="font-mono">user@teste.com</span> / <span className="font-mono">123456</span></p>
-        </div>
       </form>
     </div>
   );

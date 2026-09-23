@@ -18,8 +18,13 @@ export default function ResetPassword() {
       return;
     }
 
-    if (password.length < 6) {
-      setError('A senha deve ter pelo menos 6 caracteres');
+    if (password.length < 8) {
+      setError('A senha deve ter pelo menos 8 caracteres');
+      return;
+    }
+
+    if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+      setError('A senha deve conter pelo menos uma letra e um número');
       return;
     }
 
@@ -27,6 +32,11 @@ export default function ResetPassword() {
     setError('');
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Sessão de redefinição inválida ou expirada. Solicite um novo link.');
+      }
+
       const { error } = await supabase.auth.updateUser({
         password: password
       });

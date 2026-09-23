@@ -32,6 +32,12 @@ export default function App() {
         .single();
         
       if (!error && data) {
+        if (data.is_active === false) {
+          await supabase.auth.signOut();
+          setUser(null, null);
+          setEmployeeData(null);
+          return;
+        }
         setEmployeeData(data);
       }
     } catch (e) {
@@ -39,7 +45,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [setEmployeeData, setLoading]);
+  }, [setEmployeeData, setLoading, setUser]);
 
   useEffect(() => {
     // Aplica o tema salvo no carregamento

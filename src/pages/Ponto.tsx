@@ -131,16 +131,16 @@ export default function Ponto() {
   }, []);
 
   useEffect(() => {
-    if (user && user.id && !user.id.startsWith('mock')) {
+    if (user && user.id) {
       Promise.resolve().then(() => fetchTodayRecord());
     } else {
-      setTimeout(() => setLoading(false), 0);
+      Promise.resolve().then(() => setLoading(false));
     }
   }, [user, fetchTodayRecord]);
 
   const handleBaterPonto = async (type: 'entrada' | 'saida') => {
-    if (!user || user.id.startsWith('mock')) {
-      alert("Você está usando o usuário de Teste. Conecte ao Supabase real para salvar dados.");
+    if (!user) {
+      alert("Usuário não autenticado. Faça login para continuar.");
       return;
     }
 
@@ -160,6 +160,8 @@ export default function Ponto() {
       // 2. Coleta de Geolocalização (GPS)
       setStatusMessage('Buscando localização...');
       const coords = await getCoordinates();
+      const validLat = coords && Number.isFinite(coords.latitude) ? coords.latitude : null;
+      const validLng = coords && Number.isFinite(coords.longitude) ? coords.longitude : null;
 
       if (type === 'entrada') {
         setStatusMessage('Registrando entrada...');
@@ -170,8 +172,8 @@ export default function Ponto() {
             date: todayDateStr,
             check_in: nowIso,
             source: 'manual',
-            latitude_in: coords?.latitude ?? null,
-            longitude_in: coords?.longitude ?? null
+            latitude_in: validLat,
+            longitude_in: validLng
           })
           .select()
           .single();
@@ -194,8 +196,8 @@ export default function Ponto() {
             worked_minutes: workedMinutes,
             overtime_minutes: overtimeMinutes,
             night_minutes: nightMinutes,
-            latitude_out: coords?.latitude ?? null,
-            longitude_out: coords?.longitude ?? null
+            latitude_out: validLat,
+            longitude_out: validLng
           })
           .eq('id', todayRecord.id)
           .select()
@@ -213,13 +215,28 @@ export default function Ponto() {
   };
 
   const handleManualSubmit = async () => {
-    if (!user || user.id.startsWith('mock')) {
-      alert("Você está usando o usuário de Teste.");
+    if (!user) {
+      alert("Usuário não autenticado.");
       return;
     }
     
     if (!manualDate || !manualCheckIn || !manualCheckOut) {
       alert("Por favor, preencha todos os campos do registro manual.");
+      return;
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(manualDate)) {
+      alert("Formato de data inválido.");
+      return;
+    }
+
+    if (manualDate > todayDateStr) {
+      alert("Não é permitido registrar ponto em datas futuras.");
+      return;
+    }
+
+    if (!/^\d{2}:\d{2}$/.test(manualCheckIn) || !/^\d{2}:\d{2}$/.test(manualCheckOut)) {
+      alert("Formato de horário inválido.");
       return;
     }
 

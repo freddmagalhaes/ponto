@@ -30,15 +30,20 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchServerDate = async () => {
       try {
-        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/auth/v1/health`, { method: 'GET' });
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        if (!supabaseUrl) return;
+
+        const res = await fetch(`${supabaseUrl}/auth/v1/health`, { method: 'GET' });
         const serverDateStr = res.headers.get('date');
         if (serverDateStr) {
           const serverDate = new Date(serverDateStr);
-          setMonth(serverDate.getMonth());
-          setYear(serverDate.getFullYear());
+          if (!isNaN(serverDate.getTime())) {
+            setMonth(serverDate.getMonth());
+            setYear(serverDate.getFullYear());
+          }
         }
       } catch {
-        console.warn("Falha ao buscar data do servidor, usando data local.");
+        // Fallback silencioso para data local do dispositivo
       } finally {
         setIsDateInitialized(true);
       }
@@ -234,7 +239,7 @@ export default function Dashboard() {
             <Tooltip 
               cursor={{fill: 'var(--muted)'}}
               contentStyle={{backgroundColor: 'var(--card)', borderColor: 'var(--border)'}} 
-              formatter={(value: number | string) => [`${value}h`, 'Horas']}
+              formatter={(value) => [`${value ?? 0}h`, 'Horas']}
             />
             <Bar dataKey="hours" fill="var(--primary)" radius={[4, 4, 0, 0]} />
           </BarChart>
