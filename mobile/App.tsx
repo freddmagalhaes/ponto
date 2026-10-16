@@ -16,10 +16,8 @@ import { WebView } from 'react-native-webview';
 import Constants from 'expo-constants';
 
 export default function App() {
-  // Obtém o IP da máquina de desenvolvimento automaticamente pelo Expo
-  const hostUri = Constants.expoConfig?.hostUri;
-  const devHost = hostUri ? hostUri.split(':')[0] : '172.28.148.170';
-  const defaultUrl = `http://${devHost}:5173`;
+  // URL oficial de produção na Vercel (permite acesso em qualquer celular via 4G ou Wi-Fi)
+  const defaultUrl = 'https://ponto-fredericos-projects-208d7188.vercel.app';
 
   const [currentUrl, setCurrentUrl] = useState(defaultUrl);
   const [inputUrl, setInputUrl] = useState(defaultUrl);
