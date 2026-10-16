@@ -229,21 +229,30 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="bg-card p-6 rounded-xl border border-border shadow-sm h-80">
-        <h2 className="text-lg font-semibold mb-4 font-sans text-foreground">Horas Trabalhadas (Período de Apuração)</h2>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-            <XAxis dataKey="name" stroke="var(--muted-foreground)" style={{ textTransform: 'capitalize' }} />
-            <YAxis stroke="var(--muted-foreground)" />
-            <Tooltip 
-              cursor={{fill: 'var(--muted)'}}
-              contentStyle={{backgroundColor: 'var(--card)', borderColor: 'var(--border)'}} 
-              formatter={(value) => [`${value ?? 0}h`, 'Horas']}
-            />
-            <Bar dataKey="hours" fill="var(--primary)" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+      <div className="bg-card p-4 sm:p-6 rounded-xl border border-border shadow-sm">
+        <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 font-sans text-foreground">
+          Horas Trabalhadas (Período de Apuração)
+        </h2>
+        <div className="w-full h-64 sm:h-72">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+              <XAxis 
+                dataKey="name" 
+                stroke="var(--muted-foreground)" 
+                tick={{ fontSize: 11 }}
+                interval="preserveStartEnd"
+              />
+              <YAxis stroke="var(--muted-foreground)" tick={{ fontSize: 11 }} />
+              <Tooltip 
+                cursor={{ fill: 'var(--muted)' }}
+                contentStyle={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: '8px' }} 
+                formatter={(value) => [`${value ?? 0}h`, 'Horas']}
+              />
+              <Bar dataKey="hours" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       {/* Painel de Horas Extras e Adicional Noturno Pagos/Pendentes */}
