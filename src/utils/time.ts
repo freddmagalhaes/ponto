@@ -1,4 +1,4 @@
-import { differenceInMinutes, parseISO, isValid, format, isAfter, isBefore, getHours, startOfDay } from 'date-fns';
+import { differenceInMinutes, parseISO, isValid, format, isAfter, isBefore, getHours } from 'date-fns';
 
 export interface TimeCalculationOptions {
   checkIn: string | Date | null;
@@ -62,28 +62,7 @@ export const calculateDailyTimes = ({ checkIn, checkOut }: TimeCalculationOption
   }
 
   const totalMinutes = differenceInMinutes(end, start);
-  
-  // O horário de almoço fixo é das 12:00 às 13:12
-  const dayStart = startOfDay(start);
-  const lunchStart = new Date(dayStart);
-  lunchStart.setHours(12, 0, 0, 0);
-  
-  const lunchEnd = new Date(dayStart);
-  lunchEnd.setHours(13, 12, 0, 0);
-
-  let lunchDeduction = 0;
-
-  // Verifica se o período de trabalho tem intersecção com o almoço
-  if (isBefore(start, lunchEnd) && isAfter(end, lunchStart)) {
-    // Calcula o início efetivo da intersecção
-    const effectiveLunchStart = isAfter(start, lunchStart) ? start : lunchStart;
-    // Calcula o fim efetivo da intersecção
-    const effectiveLunchEnd = isBefore(end, lunchEnd) ? end : lunchEnd;
-    
-    lunchDeduction = differenceInMinutes(effectiveLunchEnd, effectiveLunchStart);
-  }
-
-  const workedMinutes = Math.max(0, totalMinutes - lunchDeduction);
+  const workedMinutes = Math.max(0, totalMinutes);
   
   // Horas extras: qualquer valor trabalhado que exceder 8 horas (480 minutos)
   const overtimeMinutes = Math.max(0, workedMinutes - REGULAR_WORK_HOURS_MINUTES);

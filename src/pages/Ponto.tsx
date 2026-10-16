@@ -388,7 +388,7 @@ export default function Ponto() {
          </div>
          
          <p className="text-xs text-center text-muted-foreground mt-6">
-           O intervalo de 1h12min (12:00 às 13:12) é deduzido automaticamente se o período trabalhado tiver intersecção.
+           O cálculo considera o total de horas trabalhadas entre os registros de entrada e saída.
          </p>
       </div>
     </div>

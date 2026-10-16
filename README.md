@@ -11,7 +11,7 @@ A comprehensive web-based and mobile-ready employee time tracking system built w
 - **Registro de Ponto Geolocalizado (GPS):** Captura latitude e longitude exatas no momento da batida (Entrada e Saída). Compatível com GPS nativo em smartphones e fallback dinâmico em navegadores Web.
 - **Auditoria de Localização:** O histórico exibe links integrados para o Google Maps apontando para a localização exata de cada registro de ponto.
 - **Autenticação Biométrica Híbrida:** Suporte nativo a FaceID/TouchID no celular antes do registro das batidas de ponto.
-- **Cálculo Trabalhista Automatizado:** Desconto automático de 1h12m fixos de almoço se houver intersecção; cálculo de Horas Extras e cálculo preciso de Adicional Noturno (das 22h às 05h).
+- **Cálculo Trabalhista Automatizado:** Cálculo de horas trabalhadas totais, apuração de Horas Extras (excedente da jornada padrão) e cálculo preciso de Adicional Noturno (das 22h às 05h).
 - **Relatórios Isolados por Fuso:** Filtragem exata do mês para evitar problemas com conversores de fuso horário vindo do UTC.
 - **Temas:** Suporte completo a Modo Claro e Modo Escuro persistidos localmente.
 - **Exportação de PDF:** Geração de relatórios mensais estruturados com assinaturas de conformidade prontas para o RH.
