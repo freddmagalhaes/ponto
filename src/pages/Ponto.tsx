@@ -5,6 +5,7 @@ import { ptBR } from 'date-fns/locale';
 import { supabase } from '../services/supabase';
 import { useAuthStore } from '../store/useAuth';
 import { calculateDailyTimes, formatMinutesToTime, formatTime } from '../utils/time';
+import { useCompanies } from '../hooks/useCompanies';
 
 interface TimeRecord {
   id: string;
@@ -48,6 +49,7 @@ const verifyBiometrics = async (): Promise<boolean> => {
 
 export default function Ponto() {
   const { user } = useAuthStore();
+  const { activeCompany } = useCompanies();
   const todayDateStr = format(new Date(), 'yyyy-MM-dd');
 
   const [time, setTime] = useState(new Date());
@@ -363,7 +365,7 @@ export default function Ponto() {
             <div className="flex items-center gap-2">
               <span>Registro de Hoje</span>
               <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border border-emerald-500/20">
-                Globo Pharma
+                {activeCompany?.name ?? '--'}
               </span>
             </div>
             {(saving || loading) && (

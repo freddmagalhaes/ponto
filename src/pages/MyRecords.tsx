@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { useAuthStore } from '../store/useAuth';
-import { formatMinutesToTime, formatDateExtensive, formatTime, getPayrollPeriod, getCompanyForDate } from '../utils/time';
+import { formatMinutesToTime, formatDateExtensive, formatTime, getPayrollPeriod } from '../utils/time';
+import { useCompanies } from '../hooks/useCompanies';
 import { Loader2, MapPin } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -30,11 +31,12 @@ interface TimeRecord {
 
 export default function MyRecords() {
   const { user, employeeData } = useAuthStore();
+  const { uniqueCompanies, getCompanyNameForDate, loading: companiesLoading } = useCompanies();
   const [records, setRecords] = useState<TimeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState<number>(new Date().getMonth());
   const [year, setYear] = useState<number>(new Date().getFullYear());
-  const [selectedCompany, setSelectedCompany] = useState<'all' | 'Globo Pharma' | 'DVL'>('all');
+  const [selectedCompany, setSelectedCompany] = useState<string>('all');
   const [isDateInitialized, setIsDateInitialized] = useState(false);
 
   useEffect(() => {
@@ -96,7 +98,7 @@ export default function MyRecords() {
 
   const filteredRecords = records.filter(record => {
     if (selectedCompany === 'all') return true;
-    return getCompanyForDate(record.date) === selectedCompany;
+    return getCompanyNameForDate(record.date) === selectedCompany;
   });
 
   const handleExportPDF = () => {
@@ -111,8 +113,9 @@ export default function MyRecords() {
     const formattedEnd = format(period.endDate, 'dd/MM/yyyy');
     
     // Determina o nome da empresa para o cabeçalho
-    const companyHeader = selectedCompany === 'all' 
-      ? 'Globo Pharma / DVL' 
+    const allCompanyNames = uniqueCompanies.map(c => c.name).join(' / ');
+    const companyHeader = selectedCompany === 'all'
+      ? (allCompanyNames || 'Todas as Empresas')
       : selectedCompany;
 
     // Cabeçalho
@@ -132,7 +135,7 @@ export default function MyRecords() {
 
     filteredRecords.forEach(record => {
       const dateStr = formatDateExtensive(record.date);
-      const company = getCompanyForDate(record.date);
+      const company = getCompanyNameForDate(record.date);
       const checkIn = formatTime(record.check_in);
       const checkOut = formatTime(record.check_out);
       const total = formatMinutesToTime(record.worked_minutes || 0);
@@ -210,12 +213,14 @@ export default function MyRecords() {
         <div className="flex flex-wrap gap-2">
           <select 
             value={selectedCompany} 
-            onChange={(e) => setSelectedCompany(e.target.value as 'all' | 'Globo Pharma' | 'DVL')}
+            onChange={(e) => setSelectedCompany(e.target.value)}
             className="bg-card border border-border rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary font-medium"
+            disabled={companiesLoading}
           >
             <option value="all">Todas as Empresas</option>
-            <option value="Globo Pharma">Globo Pharma (Atual)</option>
-            <option value="DVL">DVL (Anterior)</option>
+            {uniqueCompanies.map(c => (
+              <option key={c.id} value={c.name}>{c.name}</option>
+            ))}
           </select>
           <select 
             value={month} 
@@ -279,13 +284,19 @@ export default function MyRecords() {
                       {formatDateExtensive(record.date)}
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`px-2 py-0.5 rounded text-[11px] font-semibold whitespace-nowrap ${
-                        getCompanyForDate(record.date) === 'Globo Pharma'
-                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                          : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
-                      }`}>
-                        {getCompanyForDate(record.date)}
-                      </span>
+                      {(() => {
+                        const companyName = getCompanyNameForDate(record.date);
+                        const isActive = uniqueCompanies.find(c => !c.name.includes('DVL') && c.name === companyName);
+                        return (
+                          <span className={`px-2 py-0.5 rounded text-[11px] font-semibold whitespace-nowrap ${
+                            isActive
+                              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                              : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
+                          }`}>
+                            {companyName}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-6 py-4">{formatTime(record.check_in)}</td>
                     <td className="px-6 py-4">{formatTime(record.check_out)}</td>
