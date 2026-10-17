@@ -123,3 +123,19 @@ export const getPayrollPeriod = (year: number, month: number): PayrollPeriod => 
     endDateStr: format(endDate, 'yyyy-MM-dd')
   };
 };
+
+// Datas de transição entre empresas
+export const DVL_LAST_WORK_DATE = '2026-10-08';
+export const GLOBO_PHARMA_START_DATE = '2026-10-13';
+
+/**
+ * Retorna a empresa correspondente com base na data do registro
+ * - Até 08/10/2026: DVL
+ * - A partir de 13/10/2026: Globo Pharma
+ */
+export const getCompanyForDate = (dateStr: string): 'DVL' | 'Globo Pharma' => {
+  if (dateStr <= DVL_LAST_WORK_DATE) {
+    return 'DVL';
+  }
+  return 'Globo Pharma';
+};

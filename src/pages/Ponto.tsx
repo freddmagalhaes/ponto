@@ -360,7 +360,12 @@ export default function Ponto() {
 
        <div className="mt-8 w-full max-w-md bg-card border border-border rounded-xl p-6 shadow-sm">
          <h3 className="font-semibold text-lg border-b border-border pb-3 mb-4 flex items-center justify-between">
-            Registro de Hoje 
+            <div className="flex items-center gap-2">
+              <span>Registro de Hoje</span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border border-emerald-500/20">
+                Globo Pharma
+              </span>
+            </div>
             {(saving || loading) && (
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-normal">
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />

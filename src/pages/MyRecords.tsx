@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { useAuthStore } from '../store/useAuth';
-import { formatMinutesToTime, formatDateExtensive, formatTime, getPayrollPeriod } from '../utils/time';
+import { formatMinutesToTime, formatDateExtensive, formatTime, getPayrollPeriod, getCompanyForDate } from '../utils/time';
 import { Loader2, MapPin } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -34,6 +34,7 @@ export default function MyRecords() {
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState<number>(new Date().getMonth());
   const [year, setYear] = useState<number>(new Date().getFullYear());
+  const [selectedCompany, setSelectedCompany] = useState<'all' | 'Globo Pharma' | 'DVL'>('all');
   const [isDateInitialized, setIsDateInitialized] = useState(false);
 
   useEffect(() => {
@@ -93,9 +94,14 @@ export default function MyRecords() {
     }
   }, [user, month, year, isDateInitialized, fetchRecords]);
 
+  const filteredRecords = records.filter(record => {
+    if (selectedCompany === 'all') return true;
+    return getCompanyForDate(record.date) === selectedCompany;
+  });
+
   const handleExportPDF = () => {
-    if (!records || records.length === 0) {
-      alert("Não há registros para exportar neste período.");
+    if (!filteredRecords || filteredRecords.length === 0) {
+      alert("Não há registros para exportar neste período com o filtro selecionado.");
       return;
     }
 
@@ -104,6 +110,11 @@ export default function MyRecords() {
     const formattedStart = format(period.startDate, 'dd/MM/yyyy');
     const formattedEnd = format(period.endDate, 'dd/MM/yyyy');
     
+    // Determina o nome da empresa para o cabeçalho
+    const companyHeader = selectedCompany === 'all' 
+      ? 'Globo Pharma / DVL' 
+      : selectedCompany;
+
     // Cabeçalho
     doc.setFontSize(18);
     doc.text(`Relatório de Ponto - Ciclo de Fechamento`, 14, 20);
@@ -112,15 +123,16 @@ export default function MyRecords() {
     
     // Info adicional
     doc.setFontSize(11);
-    doc.text(`Empresa: PontoApp`, 14, 34);
+    doc.text(`Empresa: ${companyHeader}`, 14, 34);
     doc.text(`Funcionário: ${employeeData?.name || user?.user_metadata?.name || 'Não informado'}`, 14, 40);
     doc.text(`Gerado em: ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`, 14, 46);
 
-    const tableColumn = ["Data", "Entrada", "Saída", "Total", "Extras (Status)", "Noturno (Status)", "Origem", "Localização"];
+    const tableColumn = ["Data", "Empresa", "Entrada", "Saída", "Total", "Extras (Status)", "Noturno (Status)", "Origem", "Localização"];
     const tableRows: (string | null)[][] = [];
 
-    records.forEach(record => {
+    filteredRecords.forEach(record => {
       const dateStr = formatDateExtensive(record.date);
+      const company = getCompanyForDate(record.date);
       const checkIn = formatTime(record.check_in);
       const checkOut = formatTime(record.check_out);
       const total = formatMinutesToTime(record.worked_minutes || 0);
@@ -142,7 +154,7 @@ export default function MyRecords() {
       const source = record.source === 'imported' ? 'Importado' : 'Manual';
       const gpsStatus = record.latitude_in ? 'Sim' : 'Não';
       
-      tableRows.push([dateStr, checkIn, checkOut, total, overtimeStr, nightStr, source, gpsStatus]);
+      tableRows.push([dateStr, company, checkIn, checkOut, total, overtimeStr, nightStr, source, gpsStatus]);
     });
 
     autoTable(doc, {
@@ -150,9 +162,9 @@ export default function MyRecords() {
       body: tableRows,
       startY: 52,
       theme: 'grid',
-      styles: { fontSize: 9, cellPadding: 3 },
+      styles: { fontSize: 8.5, cellPadding: 2.5 },
       headStyles: { fillColor: [41, 128, 185], textColor: 255 },
-      margin: { bottom: 60 } // Garante espaço no rodapé para que a assinatura não fique sozinha numa página
+      margin: { bottom: 60 }
     });
 
     const finalY = (doc as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || 150;
@@ -173,7 +185,8 @@ export default function MyRecords() {
     doc.line(120, currentY, 190, currentY);
     doc.text("Assinatura do Responsável", 135, currentY + 5);
 
-    doc.save(`relatorio_ponto_${String(month + 1).padStart(2, '0')}_${year}.pdf`);
+    const companySlug = selectedCompany.replace(/\s+/g, '_');
+    doc.save(`relatorio_ponto_${companySlug}_${String(month + 1).padStart(2, '0')}_${year}.pdf`);
   };
 
   const months = [
@@ -194,7 +207,16 @@ export default function MyRecords() {
             Período: <span className="font-semibold text-foreground">{formattedStart}</span> a <span className="font-semibold text-foreground">{formattedEnd}</span>
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <select 
+            value={selectedCompany} 
+            onChange={(e) => setSelectedCompany(e.target.value as 'all' | 'Globo Pharma' | 'DVL')}
+            className="bg-card border border-border rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary font-medium"
+          >
+            <option value="all">Todas as Empresas</option>
+            <option value="Globo Pharma">Globo Pharma (Atual)</option>
+            <option value="DVL">DVL (Anterior)</option>
+          </select>
           <select 
             value={month} 
             onChange={(e) => setMonth(Number(e.target.value))}
@@ -228,6 +250,7 @@ export default function MyRecords() {
             <thead className="bg-secondary/50 text-muted-foreground uppercase">
               <tr>
                 <th className="px-6 py-3 font-medium">Data</th>
+                <th className="px-6 py-3 font-medium">Empresa</th>
                 <th className="px-6 py-3 font-medium">Entrada</th>
                 <th className="px-6 py-3 font-medium">Saída</th>
                 <th className="px-6 py-3 font-medium">Total</th>
@@ -239,21 +262,30 @@ export default function MyRecords() {
             <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center">
+                  <td colSpan={8} className="px-6 py-12 text-center">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" />
                   </td>
                 </tr>
-              ) : records.length === 0 ? (
+              ) : filteredRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
-                    Nenhum registro encontrado para este período.
+                  <td colSpan={8} className="px-6 py-12 text-center text-muted-foreground">
+                    Nenhum registro encontrado para este período com o filtro selecionado.
                   </td>
                 </tr>
               ) : (
-                records.map((record) => (
+                filteredRecords.map((record) => (
                   <tr key={record.id} className="hover:bg-muted/50">
-                    <td className="px-6 py-4 font-medium text-foreground">
+                    <td className="px-6 py-4 font-medium text-foreground whitespace-nowrap">
                       {formatDateExtensive(record.date)}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-0.5 rounded text-[11px] font-semibold whitespace-nowrap ${
+                        getCompanyForDate(record.date) === 'Globo Pharma'
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                          : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
+                      }`}>
+                        {getCompanyForDate(record.date)}
+                      </span>
                     </td>
                     <td className="px-6 py-4">{formatTime(record.check_in)}</td>
                     <td className="px-6 py-4">{formatTime(record.check_out)}</td>

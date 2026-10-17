@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../services/supabase';
 import { format } from 'date-fns';
-import { formatMinutesToTime, getPayrollPeriod } from '../utils/time';
+import { formatMinutesToTime, getPayrollPeriod, getCompanyForDate } from '../utils/time';
 
 export default function Dashboard() {
   const [month, setMonth] = useState<number>(new Date().getMonth());
   const [year, setYear] = useState<number>(new Date().getFullYear());
+  const [selectedCompany, setSelectedCompany] = useState<'all' | 'Globo Pharma' | 'DVL'>('all');
   const [isDateInitialized, setIsDateInitialized] = useState(false);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
@@ -85,6 +86,10 @@ export default function Dashboard() {
 
       if (recordsData) {
         recordsData.forEach(record => {
+          if (selectedCompany !== 'all' && getCompanyForDate(record.date) !== selectedCompany) {
+            return;
+          }
+
           totalWorked += record.worked_minutes || 0;
           totalOvertime += record.overtime_minutes || 0;
           totalNight += record.night_minutes || 0;
@@ -135,6 +140,10 @@ export default function Dashboard() {
 
       if (recordsData) {
         recordsData.forEach(record => {
+          if (selectedCompany !== 'all' && getCompanyForDate(record.date) !== selectedCompany) {
+            return;
+          }
+
           const day = monthDays.find(d => d.dateStr === record.date);
           if (day) {
             day.hours += (record.worked_minutes || 0) / 60;
@@ -154,13 +163,13 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, [year, month]);
+  }, [year, month, selectedCompany]);
 
   useEffect(() => {
     if (isDateInitialized) {
       Promise.resolve().then(() => fetchDashboardData());
     }
-  }, [month, year, isDateInitialized, fetchDashboardData]);
+  }, [month, year, selectedCompany, isDateInitialized, fetchDashboardData]);
 
   if (loading) {
      return <div className="animate-pulse space-y-6">
@@ -188,7 +197,16 @@ export default function Dashboard() {
             Período de Apuração: <span className="font-semibold text-foreground">{formattedStart}</span> a <span className="font-semibold text-foreground">{formattedEnd}</span>
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <select 
+            value={selectedCompany} 
+            onChange={(e) => setSelectedCompany(e.target.value as 'all' | 'Globo Pharma' | 'DVL')}
+            className="bg-card border border-border rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary font-medium"
+          >
+            <option value="all">Todas as Empresas</option>
+            <option value="Globo Pharma">Globo Pharma</option>
+            <option value="DVL">DVL</option>
+          </select>
           <select 
             value={month} 
             onChange={(e) => setMonth(Number(e.target.value))}
