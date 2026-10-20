@@ -8,11 +8,14 @@ import {
   TouchableOpacity,
   TextInput,
   Platform,
-  PermissionsAndroid
+  PermissionsAndroid,
+  Alert
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import Constants from 'expo-constants';
 
 export default function App() {
@@ -87,6 +90,39 @@ export default function App() {
     setHasError(false);
   };
 
+  const handleMessage = async (event: any) => {
+    try {
+      const rawData = event.nativeEvent.data;
+      if (!rawData) return;
+      const data = JSON.parse(rawData);
+
+      if (data.type === 'DOWNLOAD_PDF') {
+        const { filename, base64 } = data;
+        const cleanBase64 = base64
+          .replace(/^data:application\/pdf;filename=[^;]+;base64,/, '')
+          .replace(/^data:application\/pdf;base64,/, '');
+        const fileUri = `${FileSystem.documentDirectory}${filename}`;
+
+        await FileSystem.writeAsStringAsync(fileUri, cleanBase64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(fileUri, {
+            mimeType: 'application/pdf',
+            dialogTitle: 'Exportar Relatório de Ponto',
+            UTI: 'com.adobe.pdf',
+          });
+        } else {
+          Alert.alert('Download Concluído', `Arquivo salvo em:\n${fileUri}`);
+        }
+      }
+    } catch (err: any) {
+      console.error('Erro ao exportar PDF no mobile:', err);
+      Alert.alert('Erro ao exportar PDF', err?.message || 'Falha ao processar o arquivo PDF.');
+    }
+  };
+
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -126,6 +162,7 @@ export default function App() {
             allowUniversalAccessFromFileURLs={true}
             allowsBackForwardNavigationGestures={true}
             startInLoadingState={true}
+            onMessage={handleMessage}
             renderLoading={() => (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#16a34a" />

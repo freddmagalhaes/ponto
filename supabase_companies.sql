@@ -38,7 +38,14 @@ alter table public.employee_companies enable row level security;
 
 create policy "Users can view own company links"
   on public.employee_companies for select
-  using ( employee_id = auth.uid() and public.is_active_user() );
+  using (
+    employee_id = auth.uid()
+    and exists (
+      select 1 from public.employees
+      where id = auth.uid() and is_active = true
+    )
+  );
+
 
 create policy "Admins have full access to employee_companies"
   on public.employee_companies for all

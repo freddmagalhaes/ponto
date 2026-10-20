@@ -189,7 +189,23 @@ export default function MyRecords() {
     doc.text("Assinatura do Responsável", 135, currentY + 5);
 
     const companySlug = selectedCompany.replace(/\s+/g, '_');
-    doc.save(`relatorio_ponto_${companySlug}_${String(month + 1).padStart(2, '0')}_${year}.pdf`);
+    const filename = `relatorio_ponto_${companySlug}_${String(month + 1).padStart(2, '0')}_${year}.pdf`;
+
+    // Detecta se a aplicação está rodando dentro do WebView nativo do aplicativo mobile
+    const isReactNative = typeof window !== 'undefined' && Boolean((window as unknown as { ReactNativeWebView?: { postMessage: (msg: string) => void } }).ReactNativeWebView);
+
+    if (isReactNative) {
+      const base64 = doc.output('datauristring');
+      (window as unknown as { ReactNativeWebView: { postMessage: (msg: string) => void } }).ReactNativeWebView.postMessage(
+        JSON.stringify({
+          type: 'DOWNLOAD_PDF',
+          filename,
+          base64,
+        })
+      );
+    } else {
+      doc.save(filename);
+    }
   };
 
   const months = [
