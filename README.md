@@ -105,3 +105,21 @@ O projeto possui configuração nativa de Single Page Application em `vercel.jso
 ## 📄 Licença
 
 Este projeto está sob a licença [MIT](LICENSE).
+
+## Intervalo de almoço
+
+A tela de registro mantém os dois botões. Depois da entrada, **Saída** permite escolher entre sair para almoço ou encerrar sem intervalo. Durante o almoço, **Retorno** registra a volta; em seguida, **Saída** encerra o expediente. Uma jornada aberta permanece vinculada à data de entrada mesmo após a meia-noite.
+
+O formulário manual aceita os dois horários de almoço ou ambos vazios. Os totais são apurados ao encerrar a jornada, descontando o intervalo das horas trabalhadas e noturnas e calculando as extras sobre o tempo efetivo. Registros antigos sem intervalo mantêm o comportamento anterior. O CSV continua com quatro colunas e preserva o almoço existente ao atualizar uma data; horários incompatíveis são rejeitados.
+
+Para bancos existentes, aplicar `supabase/migrations/20261102112153_add_lunch_punches.sql` antes de publicar esta versão. A migração adiciona apenas duas colunas opcionais e uma validação de ordem; não recalcula o histórico. O `supabase_schema.sql` já inclui essa estrutura para bancos novos.
+
+Testes de cálculo (Node.js 24): `npm test`. Verificação de produção: `npm run build`.
+
+## Correção de registros manuais
+
+Em **Meus Registros → Ações → Editar**, o funcionário pode corrigir a data e os horários de um registro com origem **Manual**, inclusive jornadas em andamento. A correção atualiza o mesmo ID, recalcula os totais e rejeita datas futuras ou já ocupadas por outro registro do funcionário. Uma alteração de data pode mover o registro para outro período ou empresa; ajuste os filtros para encontrá-lo.
+
+**Alterações** mostra os valores anteriores e novos de cada alteração registrada após a ativação desta funcionalidade. O banco guarda também o autor e a data da alteração. Usuários podem consultar seus históricos, mas não podem inserir, modificar ou apagar as versões. Correções concorrentes são rejeitadas para evitar sobrescrever uma batida mais recente.
+
+Aplicar `supabase/migrations/20261102113947_manual_record_corrections.sql` após o schema inicial e a migração de almoço, inclusive em novas instalações, antes de disponibilizar a edição. Não há reconstrução de alterações anteriores à migração. O roteiro `tests/manual-corrections.sql` valida a auditoria e as permissões com dados temporários e rollback, sem modificar registros reais.

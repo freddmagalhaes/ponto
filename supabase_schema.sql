@@ -25,6 +25,8 @@ create table public.time_records (
   date date not null,
   check_in timestamp with time zone not null,
   check_out timestamp with time zone,
+  lunch_out timestamp with time zone,
+  lunch_in timestamp with time zone,
   worked_minutes integer default 0,
   overtime_minutes integer default 0,
   night_minutes integer default 0,
@@ -40,6 +42,12 @@ create table public.time_records (
   
   -- Prevent overlapping exact checkins per day manually if needed, or just standard unique constraints
   unique(employee_id, date),
+  constraint time_records_lunch_order check (
+    (lunch_out is null and lunch_in is null)
+    or (lunch_out is not null and lunch_out > check_in
+      and (lunch_in is null or lunch_in > lunch_out)
+      and (check_out is null or (lunch_in is not null and check_out > lunch_in)))
+  ),
   constraint check_overtime_status check (overtime_status in ('pending', 'paid', 'compensated')),
   constraint check_night_status check (night_status in ('pending', 'paid'))
 );
@@ -124,14 +132,14 @@ begin
       new.resolved_at := null;
       new.source := 'manual';
     elsif tg_op = 'UPDATE' then
-      -- Usuário comum só pode preencher check_out e campos de localização/cálculo,
+      -- Usuário comum pode corrigir datas de registros manuais e horários,
       -- nunca alterar overtime_status, night_status ou resolved_at diretamente
       if new.overtime_status <> old.overtime_status or
          new.night_status <> old.night_status or
          new.resolved_at is distinct from old.resolved_at or
          new.source <> old.source or
          new.employee_id <> old.employee_id or
-         new.date <> old.date then
+         (new.date <> old.date and old.source <> 'manual') then
         raise exception 'Operação não autorizada em campos protegidos de ponto.';
       end if;
     end if;

@@ -8,6 +8,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import ManualRecordActions from '../components/ManualRecordActions';
 
 interface TimeRecord {
   id: string;
@@ -15,6 +16,8 @@ interface TimeRecord {
   date: string;
   check_in: string;
   check_out: string | null;
+  lunch_out: string | null;
+  lunch_in: string | null;
   worked_minutes: number;
   overtime_minutes: number;
   overtime_status: 'pending' | 'paid' | 'compensated';
@@ -32,6 +35,7 @@ interface TimeRecord {
 export default function MyRecords() {
   const { user, employeeData } = useAuthStore();
   const { uniqueCompanies, getCompanyNameForDate, loading: companiesLoading } = useCompanies();
+  const [saveNotice, setSaveNotice] = useState('');
   const [records, setRecords] = useState<TimeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState<number>(new Date().getMonth());
@@ -107,7 +111,7 @@ export default function MyRecords() {
       return;
     }
 
-    const doc = new jsPDF();
+    const doc = new jsPDF({ orientation: 'landscape' });
     const period = getPayrollPeriod(year, month);
     const formattedStart = format(period.startDate, 'dd/MM/yyyy');
     const formattedEnd = format(period.endDate, 'dd/MM/yyyy');
@@ -130,13 +134,15 @@ export default function MyRecords() {
     doc.text(`Funcionário: ${employeeData?.name || user?.user_metadata?.name || 'Não informado'}`, 14, 40);
     doc.text(`Gerado em: ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`, 14, 46);
 
-    const tableColumn = ["Data", "Empresa", "Entrada", "Saída", "Total", "Extras (Status)", "Noturno (Status)", "Origem", "Localização"];
+    const tableColumn = ["Data", "Empresa", "Entrada", "Saída para almoço", "Retorno do almoço", "Saída", "Total", "Extras (Status)", "Noturno (Status)", "Origem", "Localização"];
     const tableRows: (string | null)[][] = [];
 
     filteredRecords.forEach(record => {
       const dateStr = formatDateExtensive(record.date);
       const company = getCompanyNameForDate(record.date);
       const checkIn = formatTime(record.check_in);
+      const lunchOut = formatTime(record.lunch_out);
+      const lunchIn = formatTime(record.lunch_in);
       const checkOut = formatTime(record.check_out);
       const total = formatMinutesToTime(record.worked_minutes || 0);
       
@@ -157,7 +163,7 @@ export default function MyRecords() {
       const source = record.source === 'imported' ? 'Importado' : 'Manual';
       const gpsStatus = record.latitude_in ? 'Sim' : 'Não';
       
-      tableRows.push([dateStr, company, checkIn, checkOut, total, overtimeStr, nightStr, source, gpsStatus]);
+      tableRows.push([dateStr, company, checkIn, lunchOut, lunchIn, checkOut, total, overtimeStr, nightStr, source, gpsStatus]);
     });
 
     autoTable(doc, {
@@ -265,6 +271,7 @@ export default function MyRecords() {
         </div>
       </div>
       
+      {saveNotice && <p role="status" className="text-sm text-primary">{saveNotice}</p>}
       <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
@@ -273,23 +280,26 @@ export default function MyRecords() {
                 <th className="px-6 py-3 font-medium">Data</th>
                 <th className="px-6 py-3 font-medium">Empresa</th>
                 <th className="px-6 py-3 font-medium">Entrada</th>
+                <th className="px-6 py-3 font-medium">Saída para almoço</th>
+                <th className="px-6 py-3 font-medium">Retorno do almoço</th>
                 <th className="px-6 py-3 font-medium">Saída</th>
                 <th className="px-6 py-3 font-medium">Total</th>
                 <th className="px-6 py-3 font-medium">Extra / Noturno</th>
                 <th className="px-6 py-3 font-medium">Origem</th>
                 <th className="px-6 py-3 font-medium">Localização</th>
+                <th className="px-6 py-3 font-medium">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center">
+                  <td colSpan={11} className="px-6 py-12 text-center">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" />
                   </td>
                 </tr>
               ) : filteredRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-muted-foreground">
+                  <td colSpan={11} className="px-6 py-12 text-center text-muted-foreground">
                     Nenhum registro encontrado para este período com o filtro selecionado.
                   </td>
                 </tr>
@@ -315,6 +325,8 @@ export default function MyRecords() {
                       })()}
                     </td>
                     <td className="px-6 py-4">{formatTime(record.check_in)}</td>
+                    <td className="px-6 py-4">{formatTime(record.lunch_out)}</td>
+                    <td className="px-6 py-4">{formatTime(record.lunch_in)}</td>
                     <td className="px-6 py-4">{formatTime(record.check_out)}</td>
                     <td className="px-6 py-4 font-medium text-primary">
                       {formatMinutesToTime(record.worked_minutes || 0)}
@@ -389,6 +401,12 @@ export default function MyRecords() {
                           <span className="text-xs text-muted-foreground/60 font-normal">Sem GPS</span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <ManualRecordActions record={record} onSaved={async () => {
+                        setSaveNotice('Registro corrigido. Se a data mudou para outro período ou empresa, ajuste os filtros para encontrá-lo.');
+                        await fetchRecords();
+                      }} />
                     </td>
                   </tr>
                 ))

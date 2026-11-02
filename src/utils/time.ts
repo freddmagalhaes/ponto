@@ -3,6 +3,8 @@ import { differenceInMinutes, parseISO, isValid, format, isAfter, isBefore, getH
 export interface TimeCalculationOptions {
   checkIn: string | Date | null;
   checkOut: string | Date | null;
+  lunchOut?: string | Date | null;
+  lunchIn?: string | Date | null;
 }
 
 export interface DailyCalculationResult {
@@ -41,7 +43,43 @@ const getNightMinutes = (start: Date, end: Date): number => {
   return nightMins;
 };
 
-export const calculateDailyTimes = ({ checkIn, checkOut }: TimeCalculationOptions): DailyCalculationResult => {
+/** Allows an open lunch only while the workday is still open. */
+export const validateLunchTimes = ({ checkIn, checkOut, lunchOut, lunchIn }: TimeCalculationOptions): void => {
+  if (!lunchOut && !lunchIn) return;
+  const start = toDate(checkIn);
+  const end = toDate(checkOut);
+  const out = toDate(lunchOut);
+  const back = toDate(lunchIn);
+  if (!start || !out || out <= start || (lunchIn && !back) ||
+      (back && back <= out) || (checkOut && (!end || !back || back >= end))) {
+    throw new Error('Horários de almoço inválidos. Use entrada < saída para almoço < retorno < saída final.');
+  }
+};
+
+/** Resolve clock times within a shift, including a single midnight crossing. */
+export const manualTimes = (date: string, checkIn: string, checkOut: string, lunchOut = '', lunchIn = '', allowOpen = false): TimeCalculationOptions => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      [checkIn, ...(checkOut || !allowOpen ? [checkOut] : []), ...([lunchOut, lunchIn].filter(Boolean))].some(t => !/^([01]\d|2[0-3]):[0-5]\d$/.test(t))) {
+    throw new Error('Data ou horário inválido.');
+  }
+  if ((!!lunchOut !== !!lunchIn) && !(allowOpen && !checkOut && lunchOut && !lunchIn)) throw new Error('Preencha os dois horários de almoço ou deixe ambos vazios.');
+  const start = new Date(`${date}T${checkIn}:00`);
+  if (!isValid(start) || format(start, 'yyyy-MM-dd') !== date) throw new Error('Data inválida.');
+  const resolve = (clock: string) => {
+    const value = new Date(`${date}T${clock}:00`);
+    if (clock < checkIn) value.setDate(value.getDate() + 1);
+    return value;
+  };
+  const end = checkOut ? resolve(checkOut) : null;
+  if (end && end <= start) throw new Error('A saída deve ser posterior à entrada.');
+  const result = { checkIn: start.toISOString(), checkOut: end?.toISOString() ?? null,
+    lunchOut: lunchOut ? resolve(lunchOut).toISOString() : null,
+    lunchIn: lunchIn ? resolve(lunchIn).toISOString() : null };
+  validateLunchTimes(result);
+  return result;
+};
+
+export const calculateDailyTimes = ({ checkIn, checkOut, lunchOut, lunchIn }: TimeCalculationOptions): DailyCalculationResult => {
   const defaultResult: DailyCalculationResult = {
     totalMinutes: 0,
     workedMinutes: 0,
@@ -51,6 +89,8 @@ export const calculateDailyTimes = ({ checkIn, checkOut }: TimeCalculationOption
 
   const start = toDate(checkIn);
   const end = toDate(checkOut);
+
+  validateLunchTimes({ checkIn, checkOut, lunchOut, lunchIn });
 
   if (!start || !end) {
     return defaultResult;
@@ -62,13 +102,18 @@ export const calculateDailyTimes = ({ checkIn, checkOut }: TimeCalculationOption
   }
 
   const totalMinutes = differenceInMinutes(end, start);
-  const workedMinutes = Math.max(0, totalMinutes);
+  const pauseStart = toDate(lunchOut);
+  const pauseEnd = toDate(lunchIn);
+  const intervals: [Date, Date][] = pauseStart && pauseEnd
+    ? [[start, pauseStart], [pauseEnd, end]]
+    : [[start, end]];
+  const workedMinutes = Math.floor(intervals.reduce((sum, [a, b]) => sum + b.getTime() - a.getTime(), 0) / 60000);
   
   // Horas extras: qualquer valor trabalhado que exceder 8 horas (480 minutos)
   const overtimeMinutes = Math.max(0, workedMinutes - REGULAR_WORK_HOURS_MINUTES);
 
   // Minutos noturnos
-  const nightMinutes = getNightMinutes(start, end);
+  const nightMinutes = intervals.reduce((sum, [a, b]) => sum + getNightMinutes(a, b), 0);
 
   return {
     totalMinutes,

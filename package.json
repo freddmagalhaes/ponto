@@ -9,6 +9,7 @@
     "mobile": "cd mobile && npx expo start",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "test": "TZ=America/Sao_Paulo node --test tests/*.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

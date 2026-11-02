@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { UploadCloud, FileType, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { calculateDailyTimes } from '../utils/time';
+import { saveTimeRecord } from '../services/timeRecords';
 
 export default function Import() {
   const [file, setFile] = useState<File | null>(null);
@@ -113,35 +114,23 @@ export default function Import() {
         const checkInIso = checkInDate.toISOString();
         const checkOutIso = checkOutDate ? checkOutDate.toISOString() : null;
 
-        let workedMinutes = 0, overtimeMinutes = 0, nightMinutes = 0;
-
-        if (checkOutIso) {
-          const times = calculateDailyTimes({ checkIn: checkInIso, checkOut: checkOutIso });
-          workedMinutes = times.workedMinutes;
-          overtimeMinutes = times.overtimeMinutes;
-          nightMinutes = times.nightMinutes;
-        }
-
         try {
-          // Upsert based on employee_id and date
-          const { error: insertError } = await supabase.from('time_records').upsert({
-            employee_id: employeeId,
-            date: dateStr,
-            check_in: checkInIso,
-            check_out: checkOutIso,
-            worked_minutes: workedMinutes,
-            overtime_minutes: overtimeMinutes,
-            night_minutes: nightMinutes,
-            source: 'imported'
-          }, { onConflict: 'employee_id, date' });
-
-          if (insertError) {
-             errors.push(`Linha ${i + 1}: Erro do DB - ${insertError.message}`);
-          } else {
-             successCount++;
-          }
-        } catch {
-           errors.push(`Linha ${i + 1}: Erro ao processar registro.`);
+          const { data: previous, error: readError } = await supabase.from('time_records')
+            .select('*').eq('employee_id', employeeId).eq('date', dateStr).maybeSingle();
+          if (readError) throw readError;
+          if (checkOutDate && checkOutDate <= checkInDate) throw new Error('A saída deve ser posterior à entrada.');
+          // CSV has no lunch columns: retain the interval and recalculate with it.
+          const times = calculateDailyTimes({ checkIn: checkInIso, checkOut: checkOutIso,
+            lunchOut: previous?.lunch_out, lunchIn: previous?.lunch_in });
+          await saveTimeRecord({
+            employee_id: employeeId, date: dateStr,
+            check_in: checkInIso, check_out: checkOutIso,
+            worked_minutes: times.workedMinutes, overtime_minutes: times.overtimeMinutes,
+            night_minutes: times.nightMinutes, source: 'imported'
+          }, previous);
+          successCount++;
+        } catch (error) {
+           errors.push(`Linha ${i + 1}: ${(error as Error).message}`);
         }
       }
 
