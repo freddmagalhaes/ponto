@@ -123,3 +123,9 @@ Em **Meus Registros → Ações → Editar**, o funcionário pode corrigir a dat
 **Alterações** mostra os valores anteriores e novos de cada alteração registrada após a ativação desta funcionalidade. O banco guarda também o autor e a data da alteração. Usuários podem consultar seus históricos, mas não podem inserir, modificar ou apagar as versões. Correções concorrentes são rejeitadas para evitar sobrescrever uma batida mais recente.
 
 Aplicar `supabase/migrations/20261102113947_manual_record_corrections.sql` após o schema inicial e a migração de almoço, inclusive em novas instalações, antes de disponibilizar a edição. Não há reconstrução de alterações anteriores à migração. O roteiro `tests/manual-corrections.sql` valida a auditoria e as permissões com dados temporários e rollback, sem modificar registros reais.
+
+## Consulta do histórico
+
+Os registros são apresentados em blocos responsivos, sem exigir rolagem horizontal. O filtro **Ciclo de fechamento** consulta do dia 20 ao dia 19; use as setas para navegar entre competências ou **Todo o histórico** para consultar todos os registros. A contagem mostra quantos registros correspondem aos filtros, e o PDF exporta esse mesmo conjunto. O carregamento busca todas as páginas da API, inclusive quando o servidor limita o tamanho de cada resposta.
+
+O dia da semana e a indicação de fim de semana são informativos. A avaliação para classificação de feriados e futuras regras de apuração está em [docs/calendario-e-horas-extras.md](docs/calendario-e-horas-extras.md).

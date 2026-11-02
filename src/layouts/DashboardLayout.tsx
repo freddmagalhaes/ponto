@@ -41,7 +41,7 @@ export default function DashboardLayout() {
   return (
     <div className="min-h-screen bg-background flex">
       {/* Sidebar Desktop */}
-      <aside className="w-64 bg-card border-r border-border hidden md:flex md:flex-col shadow-sm">
+      <aside className="w-64 shrink-0 md:sticky md:top-0 md:h-dvh bg-card border-r border-border hidden md:flex md:flex-col shadow-sm">
         <div className="h-16 flex items-center px-6 border-b border-border text-primary">
           <Clock className="w-6 h-6 mr-2" />
           <span className="font-bold text-lg text-foreground tracking-tight">PontoApp</span>
@@ -163,7 +163,7 @@ export default function DashboardLayout() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-h-screen sm:ml-0 overflow-y-auto w-full pb-20 md:pb-8">
+      <main className="min-w-0 flex-1 flex flex-col min-h-screen sm:ml-0 pb-20 md:pb-8">
         {/* Header superior */}
         <div className="h-16 flex items-center justify-between px-4 md:px-8 bg-card md:bg-transparent border-b border-border md:border-transparent sticky top-0 z-20 backdrop-blur-md bg-card/90">
           <div className="flex items-center md:hidden">
@@ -194,7 +194,7 @@ export default function DashboardLayout() {
           </div>
         </div>
 
-        <div className="p-4 sm:p-6 md:p-8 flex-1 max-w-7xl mx-auto w-full">
+        <div className="min-w-0 p-4 sm:p-6 md:p-8 flex-1 max-w-7xl mx-auto w-full">
           <Outlet />
         </div>
       </main>

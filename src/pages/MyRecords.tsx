@@ -1,14 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../services/supabase';
 import { useAuthStore } from '../store/useAuth';
 import { formatMinutesToTime, formatDateExtensive, formatTime, getPayrollPeriod } from '../utils/time';
 import { useCompanies } from '../hooks/useCompanies';
-import { Loader2, MapPin } from 'lucide-react';
+import { Loader2, MapPin, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import ManualRecordActions from '../components/ManualRecordActions';
+import { fetchAllPages } from '../utils/pagination';
 
 interface TimeRecord {
   id: string;
@@ -36,6 +37,9 @@ export default function MyRecords() {
   const { user, employeeData } = useAuthStore();
   const { uniqueCompanies, getCompanyNameForDate, loading: companiesLoading } = useCompanies();
   const [saveNotice, setSaveNotice] = useState('');
+  const [scope, setScope] = useState<'cycle' | 'all'>('cycle');
+  const [loadError, setLoadError] = useState('');
+  const requestId = useRef(0);
   const [records, setRecords] = useState<TimeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState<number>(new Date().getMonth());
@@ -68,27 +72,31 @@ export default function MyRecords() {
   }, []);
 
   const fetchRecords = useCallback(async () => {
+    if (!user?.id) return;
+    const id = ++requestId.current;
+    setLoading(true);
+    setLoadError('');
     try {
-      setLoading(true);
-      
       const period = getPayrollPeriod(year, month);
-
-      const { data, error } = await supabase
-        .from('time_records')
-        .select('*')
-        .eq('employee_id', user?.id)
-        .gte('date', period.startDateStr)
-        .lte('date', period.endDateStr)
-        .order('date', { ascending: false });
-
-      if (error) throw error;
-      setRecords((data as unknown as TimeRecord[]) || []);
+      const data = await fetchAllPages<TimeRecord>(async (offset, size) => {
+        let query = supabase.from('time_records').select('*', { count: 'exact' }).eq('employee_id', user.id);
+        if (scope === 'cycle') query = query.gte('date', period.startDateStr).lte('date', period.endDateStr);
+        const { data, count, error } = await query.order('date', { ascending: false })
+          .order('id', { ascending: false }).range(offset, offset + size - 1);
+        if (error) throw error;
+        return { data: (data ?? []) as TimeRecord[], count };
+      });
+      if (id === requestId.current) setRecords(data);
     } catch (e) {
+      if (id === requestId.current) {
+        setRecords([]);
+        setLoadError('Não foi possível carregar os registros. Tente novamente.');
+      }
       console.error(e);
     } finally {
-      setLoading(false);
+      if (id === requestId.current) setLoading(false);
     }
-  }, [user, year, month]);
+  }, [user, year, month, scope]);
 
   useEffect(() => {
     if (!isDateInitialized) return;
@@ -124,9 +132,11 @@ export default function MyRecords() {
 
     // Cabeçalho
     doc.setFontSize(18);
-    doc.text(`Relatório de Ponto - Ciclo de Fechamento`, 14, 20);
+    doc.text(scope === 'all' ? 'Relatório de Ponto - Histórico Completo' : 'Relatório de Ponto - Ciclo de Fechamento', 14, 20);
     doc.setFontSize(12);
-    doc.text(`Período: ${formattedStart} a ${formattedEnd}`, 14, 27);
+    doc.text(scope === 'all'
+      ? `Período: ${formatDateExtensive(filteredRecords[filteredRecords.length - 1].date)} a ${formatDateExtensive(filteredRecords[0].date)}`
+      : `Período: ${formattedStart} a ${formattedEnd}`, 14, 27);
     
     // Info adicional
     doc.setFontSize(11);
@@ -195,7 +205,7 @@ export default function MyRecords() {
     doc.text("Assinatura do Responsável", 135, currentY + 5);
 
     const companySlug = selectedCompany.replace(/\s+/g, '_');
-    const filename = `relatorio_ponto_${companySlug}_${String(month + 1).padStart(2, '0')}_${year}.pdf`;
+    const filename = scope === 'all' ? `relatorio_ponto_${companySlug}_historico_completo.pdf` : `relatorio_ponto_${companySlug}_${String(month + 1).padStart(2, '0')}_${year}.pdf`;
 
     // Detecta se a aplicação está rodando dentro do WebView nativo do aplicativo mobile
     const isReactNative = typeof window !== 'undefined' && Boolean((window as unknown as { ReactNativeWebView?: { postMessage: (msg: string) => void } }).ReactNativeWebView);
@@ -223,198 +233,119 @@ export default function MyRecords() {
   const formattedStart = format(period.startDate, 'dd/MM/yyyy');
   const formattedEnd = format(period.endDate, 'dd/MM/yyyy');
 
+  const changeCycle = (offset: number) => {
+    const date = new Date(year, month + offset, 1);
+    setMonth(date.getMonth());
+    setYear(date.getFullYear());
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Meus Registros</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Período: <span className="font-semibold text-foreground">{formattedStart}</span> a <span className="font-semibold text-foreground">{formattedEnd}</span>
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <select 
-            value={selectedCompany} 
-            onChange={(e) => setSelectedCompany(e.target.value)}
-            className="bg-card border border-border rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary font-medium"
-            disabled={companiesLoading}
-          >
+    <div className="min-w-0 space-y-5">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Meus Registros</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          {scope === 'all' ? 'Todo o histórico de ponto, do mais recente ao mais antigo.' :
+            <>Ciclo de fechamento: <strong className="text-foreground">{formattedStart} a {formattedEnd}</strong> (dia 20 ao dia 19).</>}
+        </p>
+      </div>
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-4">
+        <label className="flex min-w-0 flex-col gap-1 text-xs font-medium">Visualização
+          <select aria-label="Visualização" value={scope} onChange={e => setScope(e.target.value as 'cycle' | 'all')}
+            className="max-w-full rounded-md border border-border bg-background px-3 py-2 text-sm">
+            <option value="cycle">Ciclo de fechamento</option>
+            <option value="all">Todo o histórico</option>
+          </select>
+        </label>
+        <label className="flex min-w-0 flex-col gap-1 text-xs font-medium">Empresa
+          <select aria-label="Empresa" value={selectedCompany} onChange={e => setSelectedCompany(e.target.value)} disabled={companiesLoading}
+            className="max-w-full rounded-md border border-border bg-background px-3 py-2 text-sm">
             <option value="all">Todas as Empresas</option>
-            {uniqueCompanies.map(c => (
-              <option key={c.id} value={c.name}>{c.name}</option>
-            ))}
+            {uniqueCompanies.map(company => <option key={company.id} value={company.name}>{company.name}</option>)}
           </select>
-          <select 
-            value={month} 
-            onChange={(e) => setMonth(Number(e.target.value))}
-            className="bg-card border border-border rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary"
-          >
-            {months.map((m, i) => (
-              <option key={i} value={i}>{m}</option>
-            ))}
+        </label>
+        {scope === 'cycle' && <div className="flex max-w-full flex-wrap items-center gap-2">
+          <button type="button" onClick={() => changeCycle(-1)} aria-label="Ciclo anterior" title="Ciclo anterior"
+            className="rounded-md border border-border p-2"><ChevronLeft className="h-5 w-5" /></button>
+          <select aria-label="Mês do ciclo" value={month} onChange={e => setMonth(Number(e.target.value))}
+            className="min-w-0 rounded-md border border-border bg-background px-2 py-2 text-sm">
+            {months.map((name, i) => <option key={name} value={i}>{name}</option>)}
           </select>
-          <select 
-            value={year} 
-            onChange={(e) => setYear(Number(e.target.value))}
-            className="bg-card border border-border rounded-md px-3 py-2 text-sm focus:ring-primary focus:border-primary"
-          >
-            {[year - 1, year, year + 1].map((y) => (
-              <option key={y} value={y}>{y}</option>
-            ))}
+          <select aria-label="Ano do ciclo" value={year} onChange={e => setYear(Number(e.target.value))}
+            className="rounded-md border border-border bg-background px-2 py-2 text-sm">
+            {[year - 1, year, year + 1].map(value => <option key={value} value={value}>{value}</option>)}
           </select>
-          <button 
-            onClick={handleExportPDF}
-            className="bg-secondary text-secondary-foreground border border-border px-4 py-2 rounded-md font-medium text-sm shadow-sm hover:bg-secondary/80"
-          >
-            Exportar PDF
-          </button>
-        </div>
+          <button type="button" onClick={() => changeCycle(1)} aria-label="Próximo ciclo" title="Próximo ciclo"
+            className="rounded-md border border-border p-2"><ChevronRight className="h-5 w-5" /></button>
+        </div>}
+        <button type="button" onClick={handleExportPDF} disabled={loading || !filteredRecords.length || !!loadError}
+          className="rounded-md border border-border bg-secondary px-4 py-2 text-sm font-medium disabled:opacity-50">Exportar PDF</button>
       </div>
-      
       {saveNotice && <p role="status" className="text-sm text-primary">{saveNotice}</p>}
-      <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-secondary/50 text-muted-foreground uppercase">
-              <tr>
-                <th className="px-6 py-3 font-medium">Data</th>
-                <th className="px-6 py-3 font-medium">Empresa</th>
-                <th className="px-6 py-3 font-medium">Entrada</th>
-                <th className="px-6 py-3 font-medium">Saída para almoço</th>
-                <th className="px-6 py-3 font-medium">Retorno do almoço</th>
-                <th className="px-6 py-3 font-medium">Saída</th>
-                <th className="px-6 py-3 font-medium">Total</th>
-                <th className="px-6 py-3 font-medium">Extra / Noturno</th>
-                <th className="px-6 py-3 font-medium">Origem</th>
-                <th className="px-6 py-3 font-medium">Localização</th>
-                <th className="px-6 py-3 font-medium">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {loading ? (
-                <tr>
-                  <td colSpan={11} className="px-6 py-12 text-center">
-                    <Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" />
-                  </td>
-                </tr>
-              ) : filteredRecords.length === 0 ? (
-                <tr>
-                  <td colSpan={11} className="px-6 py-12 text-center text-muted-foreground">
-                    Nenhum registro encontrado para este período com o filtro selecionado.
-                  </td>
-                </tr>
-              ) : (
-                filteredRecords.map((record) => (
-                  <tr key={record.id} className="hover:bg-muted/50">
-                    <td className="px-6 py-4 font-medium text-foreground whitespace-nowrap">
-                      {formatDateExtensive(record.date)}
-                    </td>
-                    <td className="px-6 py-4">
-                      {(() => {
-                        const companyName = getCompanyNameForDate(record.date);
-                        const isActive = uniqueCompanies.find(c => !c.name.includes('DVL') && c.name === companyName);
-                        return (
-                          <span className={`px-2 py-0.5 rounded text-[11px] font-semibold whitespace-nowrap ${
-                            isActive
-                              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                              : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
-                          }`}>
-                            {companyName}
-                          </span>
-                        );
-                      })()}
-                    </td>
-                    <td className="px-6 py-4">{formatTime(record.check_in)}</td>
-                    <td className="px-6 py-4">{formatTime(record.lunch_out)}</td>
-                    <td className="px-6 py-4">{formatTime(record.lunch_in)}</td>
-                    <td className="px-6 py-4">{formatTime(record.check_out)}</td>
-                    <td className="px-6 py-4 font-medium text-primary">
-                      {formatMinutesToTime(record.worked_minutes || 0)}
-                    </td>
-                    <td className="px-6 py-4 text-muted-foreground">
-                      <div className="flex flex-col gap-1">
-                        {record.overtime_minutes > 0 && (
-                          <span className="flex items-center gap-1.5">
-                            <span className="font-semibold text-primary">{formatMinutesToTime(record.overtime_minutes)}</span>
-                            {record.overtime_status === 'paid' ? (
-                              <span className="px-1.5 py-0.5 bg-green-500/10 text-green-600 border border-green-500/20 rounded text-[10px] font-bold">Pago</span>
-                            ) : record.overtime_status === 'compensated' ? (
-                              <span className="px-1.5 py-0.5 bg-teal-500/10 text-teal-600 border border-teal-500/20 rounded text-[10px] font-bold">Banco</span>
-                            ) : (
-                              <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-600 border border-amber-500/20 rounded text-[10px] font-bold">Pendente</span>
-                            )}
-                          </span>
-                        )}
-                        {record.night_minutes > 0 && (
-                          <span className="flex items-center gap-1.5">
-                            <span className="font-medium text-foreground">{formatMinutesToTime(record.night_minutes)} Not.</span>
-                            {record.night_status === 'paid' ? (
-                              <span className="px-1.5 py-0.5 bg-green-500/10 text-green-600 border border-green-500/20 rounded text-[10px] font-bold">Pago</span>
-                            ) : (
-                              <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-600 border border-amber-500/20 rounded text-[10px] font-bold">Pendente</span>
-                            )}
-                          </span>
-                        )}
-                        {(!record.overtime_minutes && !record.night_minutes) && (
-                          <span className="text-xs text-muted-foreground/60 font-normal">--</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      {record.source === 'imported' ? (
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400">
-                          Importado
-                        </span>
-                      ) : (
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
-                          Manual
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex gap-2">
-                        {typeof record.latitude_in === 'number' && typeof record.longitude_in === 'number' && Number.isFinite(record.latitude_in) && Number.isFinite(record.longitude_in) && (
-                          <a 
-                            href={`https://www.google.com/maps?q=${record.latitude_in},${record.longitude_in}`} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-primary hover:text-primary/80 flex items-center gap-0.5 font-medium"
-                            title="Localização de Entrada"
-                          >
-                            <MapPin className="w-3.5 h-3.5" />
-                            <span className="text-xs">Ent.</span>
-                          </a>
-                        )}
-                        {typeof record.latitude_out === 'number' && typeof record.longitude_out === 'number' && Number.isFinite(record.latitude_out) && Number.isFinite(record.longitude_out) && (
-                          <a 
-                            href={`https://www.google.com/maps?q=${record.latitude_out},${record.longitude_out}`} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-destructive hover:text-destructive/80 flex items-center gap-0.5 font-medium"
-                            title="Localização de Saída"
-                          >
-                            <MapPin className="w-3.5 h-3.5" />
-                            <span className="text-xs">Saí.</span>
-                          </a>
-                        )}
-                        {!Number.isFinite(record.latitude_in) && !Number.isFinite(record.latitude_out) && (
-                          <span className="text-xs text-muted-foreground/60 font-normal">Sem GPS</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <ManualRecordActions record={record} onSaved={async () => {
-                        setSaveNotice('Registro corrigido. Se a data mudou para outro período ou empresa, ajuste os filtros para encontrá-lo.');
-                        await fetchRecords();
-                      }} />
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+      {loadError ? <div role="alert" className="text-sm text-destructive">{loadError}
+        <button onClick={() => fetchRecords()} className="ml-2 underline">Tentar novamente</button>
+      </div> : loading ? <div role="status" className="flex items-center justify-center gap-2 py-12 text-sm">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" /> Carregando registros…
+      </div> : <>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+          <p aria-live="polite">{filteredRecords.length} {filteredRecords.length === 1 ? 'registro' : 'registros'} {scope === 'cycle' ? 'neste ciclo' : 'no histórico'}{selectedCompany !== 'all' ? ` · ${selectedCompany}` : ''}.</p>
+          {scope === 'cycle' && <button onClick={() => setScope('all')} className="text-primary underline">Ver todo o histórico</button>}
         </div>
-      </div>
+        {filteredRecords.length === 0 ? <p className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground">
+          Nenhum registro encontrado para os filtros selecionados.
+        </p> : <div className="space-y-3">
+          {filteredRecords.map(record => {
+            const date = new Date(`${record.date}T12:00:00`);
+            const weekend = date.getDay() === 0 || date.getDay() === 6;
+            const coordinates = [
+              { label: 'GPS entrada', lat: record.latitude_in, lng: record.longitude_in },
+              { label: 'GPS saída', lat: record.latitude_out, lng: record.longitude_out },
+            ].filter(point => typeof point.lat === 'number' && Number.isFinite(point.lat) && typeof point.lng === 'number' && Number.isFinite(point.lng));
+            return <article key={record.id} aria-label={`Registro de ${formatDateExtensive(record.date)}`}
+              className="min-w-0 rounded-xl border border-border bg-card p-4 shadow-sm">
+              <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,2fr)]">
+                <div className="min-w-0 space-y-2">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <h2 className="font-semibold text-base">{formatDateExtensive(record.date)}</h2>
+                    <span className="text-xs text-muted-foreground">{format(date, 'EEEE', { locale: ptBR })}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <span className="max-w-full break-words rounded bg-secondary px-2 py-1">{getCompanyNameForDate(record.date)}</span>
+                    <span className="rounded bg-primary/10 text-primary px-2 py-1">{record.source === 'imported' ? 'Importado' : 'Manual'}</span>
+                    {weekend && <span className="rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 px-2 py-1">Fim de semana</span>}
+                  </div>
+                </div>
+                <dl className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-4">
+                  {[['Entrada', record.check_in], ['Saída para almoço', record.lunch_out],
+                    ['Retorno do almoço', record.lunch_in], ['Saída final', record.check_out]].map(([label, value]) => (
+                    <div key={label} className="min-w-0 rounded-lg bg-secondary/40 px-3 py-2">
+                      <dt className="text-xs text-muted-foreground leading-4 min-h-8">{label}</dt>
+                      <dd className="text-base font-semibold tabular-nums">{formatTime(value)}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+              <div className="mt-3 flex min-w-0 flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+                <dl className="flex flex-wrap gap-x-6 gap-y-2 text-xs">
+                  <div><dt className="text-muted-foreground">Trabalhadas</dt><dd className="font-semibold text-primary text-sm">{formatMinutesToTime(record.worked_minutes || 0)}</dd></div>
+                  <div><dt className="text-muted-foreground">Extras</dt><dd className="font-medium">{formatMinutesToTime(record.overtime_minutes || 0)}{record.overtime_minutes > 0 ? ` · ${record.overtime_status === 'paid' ? 'Pago' : record.overtime_status === 'compensated' ? 'Banco' : 'Pendente'}` : ''}</dd></div>
+                  <div><dt className="text-muted-foreground">Noturnas</dt><dd className="font-medium">{formatMinutesToTime(record.night_minutes || 0)}{record.night_minutes > 0 ? ` · ${record.night_status === 'paid' ? 'Pago' : 'Pendente'}` : ''}</dd></div>
+                </dl>
+                <div className="flex flex-wrap items-center gap-3 text-xs">
+                  {coordinates.map(point => <a key={point.label} href={`https://www.google.com/maps?q=${point.lat},${point.lng}`}
+                    target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                    <MapPin className="w-3.5 h-3.5" /> {point.label}
+                  </a>)}
+                  {!coordinates.length && <span className="text-muted-foreground">Sem GPS</span>}
+                  <ManualRecordActions record={record} onSaved={async () => {
+                    setSaveNotice('Registro corrigido. Se a data mudou para outro período ou empresa, ajuste os filtros para encontrá-lo.');
+                    await fetchRecords();
+                  }} />
+                </div>
+              </div>
+            </article>;
+          })}
+        </div>}
+      </>}
     </div>
   );
 }
