@@ -3,9 +3,13 @@ import { supabase, supabaseAdmin } from '../services/supabase';
 import { Loader2, Plus, X, Edit, Power, PowerOff, Key, ClipboardCheck } from 'lucide-react';
 import { getPayrollPeriod, formatMinutesToTime } from '../utils/time';
 import type { Employee } from '../store/useAuth';
+import { useRuleProfiles } from '../hooks/useRuleProfiles';
+import { withEffectiveOvertime, wholeWeeks } from '../utils/rules';
 
 export default function Employees() {
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const { rows: shiftRows, getProfile, holidays } = useRuleProfiles();
+  const [shiftId, setShiftId] = useState('');
   const [loading, setLoading] = useState(true);
   
   // Modals state
@@ -21,19 +25,22 @@ export default function Employees() {
   const [closeStats, setCloseStats] = useState({ overtimePending: 0, nightPending: 0 });
   const [closeLoading, setCloseLoading] = useState(false);
 
-  const fetchCloseStats = useCallback(async (empId: string, yr: number, mth: number) => {
+  const fetchCloseStats = useCallback(async (empId: string, yr: number, mth: number, empShiftId?: string | null) => {
     try {
       setCloseLoading(true);
       const period = getPayrollPeriod(yr, mth);
-      
-      const { data, error } = await supabase
+      const range = wholeWeeks(period.startDateStr, period.endDateStr);
+
+      const { data: raw, error } = await supabase
         .from('time_records')
         .select('*')
         .eq('employee_id', empId)
-        .gte('date', period.startDateStr)
-        .lte('date', period.endDateStr);
-        
+        .gte('date', range.from)
+        .lte('date', range.to);
+
       if (error) throw error;
+      const data = raw && withEffectiveOvertime(raw, () => getProfile(empShiftId), holidays)
+        .filter(r => r.date >= period.startDateStr && r.date <= period.endDateStr);
       
       let overtimePending = 0;
       let nightPending = 0;
@@ -55,11 +62,11 @@ export default function Employees() {
     } finally {
       setCloseLoading(false);
     }
-  }, []);
+  }, [getProfile, holidays]);
 
   useEffect(() => {
     if (selectedEmp) {
-      Promise.resolve().then(() => fetchCloseStats(selectedEmp.id, closeYear, closeMonth));
+      Promise.resolve().then(() => fetchCloseStats(selectedEmp.id, closeYear, closeMonth, selectedEmp.shift_id));
     }
   }, [selectedEmp, closeMonth, closeYear, fetchCloseStats]);
 
@@ -95,7 +102,7 @@ export default function Employees() {
       if (error) throw error;
       
       alert('Horas liquidadas com sucesso!');
-      fetchCloseStats(selectedEmp.id, closeYear, closeMonth);
+      fetchCloseStats(selectedEmp.id, closeYear, closeMonth, selectedEmp.shift_id);
     } catch (e) {
       alert('Erro ao liquidar horas: ' + (e as Error).message);
     } finally {
@@ -140,6 +147,7 @@ export default function Employees() {
     setRole('user');
     setJourneyStart('08:00');
     setJourneyEnd('18:00');
+    setShiftId('');
     setEditingId(null);
   };
 
@@ -157,6 +165,7 @@ export default function Employees() {
     setRole(emp.role || 'user');
     setJourneyStart(emp.journey_start ? emp.journey_start.slice(0,5) : '08:00');
     setJourneyEnd(emp.journey_end ? emp.journey_end.slice(0,5) : '18:00');
+    setShiftId(emp.shift_id ?? '');
     setShowEditModal(true);
   };
 
@@ -199,6 +208,7 @@ export default function Employees() {
             role: role === 'admin' ? 'admin' : 'user', 
             journey_start: journeyStart,
             journey_end: journeyEnd,
+            ...(shiftRows.length ? { shift_id: shiftId || null } : {}),
             name: cleanName
           })
           .eq('id', data.user.id);
@@ -234,7 +244,8 @@ export default function Employees() {
           position: position.trim(),
           role: role === 'admin' ? 'admin' : 'user',
           journey_start: journeyStart,
-          journey_end: journeyEnd
+          journey_end: journeyEnd,
+          ...(shiftRows.length ? { shift_id: shiftId || null } : {})
         })
         .eq('id', editingId);
 
@@ -345,6 +356,13 @@ export default function Employees() {
                   <label className="block text-sm font-medium mb-1 text-foreground">Fim da Jornada</label>
                   <input type="time" required value={journeyEnd} onChange={e=>setJourneyEnd(e.target.value)} className="w-full bg-background border border-input rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
                 </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium mb-1 text-foreground">Regra de jornada</label>
+                  <select value={shiftId} onChange={e=>setShiftId(e.target.value)} disabled={!shiftRows.length} className="w-full bg-background border border-input rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                    <option value="">Padrão (8h diárias, noturno 22h–5h)</option>
+                    {shiftRows.filter(r => r.is_active !== false).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select>
+                </div>
               </div>
               <div className="pt-4">
                 <button disabled={saving} type="submit" className="w-full bg-primary text-primary-foreground py-2 h-10 rounded-lg font-medium shadow flex justify-center items-center gap-2 hover:bg-primary/90 transition-colors disabled:opacity-50">
@@ -395,6 +413,13 @@ export default function Employees() {
                 <div>
                   <label className="block text-sm font-medium mb-1 text-foreground">Fim da Jornada</label>
                   <input type="time" required value={journeyEnd} onChange={e=>setJourneyEnd(e.target.value)} className="w-full bg-background border border-input rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium mb-1 text-foreground">Regra de jornada</label>
+                  <select value={shiftId} onChange={e=>setShiftId(e.target.value)} disabled={!shiftRows.length} className="w-full bg-background border border-input rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                    <option value="">Padrão (8h diárias, noturno 22h–5h)</option>
+                    {shiftRows.filter(r => r.is_active !== false).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select>
                 </div>
               </div>
               <div className="pt-4">

@@ -4,9 +4,12 @@ import { supabase } from '../services/supabase';
 import { format } from 'date-fns';
 import { formatMinutesToTime, getPayrollPeriod } from '../utils/time';
 import { useCompanies } from '../hooks/useCompanies';
+import { useRuleProfiles } from '../hooks/useRuleProfiles';
+import { withEffectiveOvertime, wholeWeeks } from '../utils/rules';
 
 export default function Dashboard() {
   const { uniqueCompanies, getCompanyNameForDate } = useCompanies();
+  const { getProfile, holidays, loading: profilesLoading } = useRuleProfiles();
   const [month, setMonth] = useState<number>(new Date().getMonth());
   const [year, setYear] = useState<number>(new Date().getFullYear());
   const [selectedCompany, setSelectedCompany] = useState<string>('all');
@@ -60,13 +63,23 @@ export default function Dashboard() {
       const period = getPayrollPeriod(year, month);
 
       // Fetch all time records for the custom period based on the literal 'date'
-      const { data: recordsData, error: recordsError } = await supabase
+      // Semanas inteiras: o limite semanal precisa das pontas do ciclo (filtradas abaixo).
+      const range = wholeWeeks(period.startDateStr, period.endDateStr);
+      const { data: rawRecords, error: recordsError } = await supabase
         .from('time_records')
         .select('*')
-        .gte('date', period.startDateStr)
-        .lte('date', period.endDateStr);
+        .gte('date', range.from)
+        .lte('date', range.to);
 
       if (recordsError) throw recordsError;
+
+      // Perfil de jornada de cada funcionário (sem a coluna/tabela, vale o padrão legado).
+      const { data: shiftRows } = await supabase.from('employees').select('id, shift_id');
+      const shiftOf = new Map((shiftRows ?? []).map((e: { id: string; shift_id: string | null }) => [e.id, e.shift_id]));
+      const recordsData = rawRecords
+        ? withEffectiveOvertime(rawRecords, id => getProfile(shiftOf.get(id)), holidays)
+            .filter(r => r.date >= period.startDateStr && r.date <= period.endDateStr)
+        : null;
 
       // Fetch employee count
       const { count: empCount, error: empError } = await supabase
@@ -165,13 +178,13 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, [year, month, selectedCompany]);
+  }, [year, month, selectedCompany, getProfile, holidays]);
 
   useEffect(() => {
-    if (isDateInitialized) {
+    if (isDateInitialized && !profilesLoading) {
       Promise.resolve().then(() => fetchDashboardData());
     }
-  }, [month, year, selectedCompany, isDateInitialized, fetchDashboardData]);
+  }, [month, year, selectedCompany, isDateInitialized, profilesLoading, fetchDashboardData]);
 
   if (loading) {
      return <div className="animate-pulse space-y-6">

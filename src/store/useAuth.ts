@@ -11,6 +11,7 @@ export interface Employee {
   created_at: string;
   journey_start?: string;
   journey_end?: string;
+  shift_id?: string | null;
   is_active?: boolean;
 }
 

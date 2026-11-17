@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '../services/supabase';
 import { useAuthStore } from '../store/useAuth';
 import { formatMinutesToTime, formatDateExtensive, formatTime, getPayrollPeriod } from '../utils/time';
@@ -10,6 +10,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import ManualRecordActions from '../components/ManualRecordActions';
 import { fetchAllPages } from '../utils/pagination';
+import { useRuleProfiles } from '../hooks/useRuleProfiles';
+import { withEffectiveOvertime, wholeWeeks } from '../utils/rules';
 
 interface TimeRecord {
   id: string;
@@ -36,6 +38,8 @@ interface TimeRecord {
 export default function MyRecords() {
   const { user, employeeData } = useAuthStore();
   const { uniqueCompanies, getCompanyNameForDate, loading: companiesLoading } = useCompanies();
+  const { getProfile, holidays } = useRuleProfiles();
+  const profile = getProfile(employeeData?.shift_id);
   const [saveNotice, setSaveNotice] = useState('');
   const [scope, setScope] = useState<'cycle' | 'all'>('cycle');
   const [loadError, setLoadError] = useState('');
@@ -80,7 +84,9 @@ export default function MyRecords() {
       const period = getPayrollPeriod(year, month);
       const data = await fetchAllPages<TimeRecord>(async (offset, size) => {
         let query = supabase.from('time_records').select('*', { count: 'exact' }).eq('employee_id', user.id);
-        if (scope === 'cycle') query = query.gte('date', period.startDateStr).lte('date', period.endDateStr);
+        // Semanas inteiras: o limite semanal precisa das pontas do ciclo (filtradas na exibição).
+        const range = wholeWeeks(period.startDateStr, period.endDateStr);
+        if (scope === 'cycle') query = query.gte('date', range.from).lte('date', range.to);
         const { data, count, error } = await query.order('date', { ascending: false })
           .order('id', { ascending: false }).range(offset, offset + size - 1);
         if (error) throw error;
@@ -108,7 +114,14 @@ export default function MyRecords() {
     }
   }, [user, month, year, isDateInitialized, fetchRecords]);
 
-  const filteredRecords = records.filter(record => {
+  const visibleRecords = useMemo(() => {
+    const effective = withEffectiveOvertime(records, () => profile, holidays);
+    if (scope !== 'cycle') return effective;
+    const period = getPayrollPeriod(year, month);
+    return effective.filter(r => r.date >= period.startDateStr && r.date <= period.endDateStr);
+  }, [records, profile, holidays, scope, year, month]);
+
+  const filteredRecords = visibleRecords.filter(record => {
     if (selectedCompany === 'all') return true;
     return getCompanyNameForDate(record.date) === selectedCompany;
   });
@@ -161,6 +174,7 @@ export default function MyRecords() {
       if (record.overtime_minutes > 0) {
         const otStatus = record.overtime_status === 'paid' ? 'Pago' : record.overtime_status === 'compensated' ? 'Banco' : 'Pend.';
         overtimeStr += ` (${otStatus})`;
+        if (record.overtime100_minutes > 0) overtimeStr += ` 100%: ${formatMinutesToTime(record.overtime100_minutes)}`;
       }
 
       // Night status display
@@ -327,7 +341,7 @@ export default function MyRecords() {
               <div className="mt-3 flex min-w-0 flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
                 <dl className="flex flex-wrap gap-x-6 gap-y-2 text-xs">
                   <div><dt className="text-muted-foreground">Trabalhadas</dt><dd className="font-semibold text-primary text-sm">{formatMinutesToTime(record.worked_minutes || 0)}</dd></div>
-                  <div><dt className="text-muted-foreground">Extras</dt><dd className="font-medium">{formatMinutesToTime(record.overtime_minutes || 0)}{record.overtime_minutes > 0 ? ` · ${record.overtime_status === 'paid' ? 'Pago' : record.overtime_status === 'compensated' ? 'Banco' : 'Pendente'}` : ''}</dd></div>
+                  <div><dt className="text-muted-foreground">Extras</dt><dd className="font-medium">{formatMinutesToTime(record.overtime_minutes || 0)}{record.overtime_minutes > 0 ? ` · ${record.overtime_status === 'paid' ? 'Pago' : record.overtime_status === 'compensated' ? 'Banco' : 'Pendente'}` : ''}{record.overtime100_minutes > 0 ? ` · 100%: ${formatMinutesToTime(record.overtime100_minutes)}` : ''}</dd></div>
                   <div><dt className="text-muted-foreground">Noturnas</dt><dd className="font-medium">{formatMinutesToTime(record.night_minutes || 0)}{record.night_minutes > 0 ? ` · ${record.night_status === 'paid' ? 'Pago' : 'Pendente'}` : ''}</dd></div>
                 </dl>
                 <div className="flex flex-wrap items-center gap-3 text-xs">
@@ -336,7 +350,7 @@ export default function MyRecords() {
                     <MapPin className="w-3.5 h-3.5" /> {point.label}
                   </a>)}
                   {!coordinates.length && <span className="text-muted-foreground">Sem GPS</span>}
-                  <ManualRecordActions record={record} onSaved={async () => {
+                  <ManualRecordActions record={record} profile={profile} onSaved={async () => {
                     setSaveNotice('Registro corrigido. Se a data mudou para outro período ou empresa, ajuste os filtros para encontrá-lo.');
                     await fetchRecords();
                   }} />

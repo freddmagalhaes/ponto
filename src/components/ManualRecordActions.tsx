@@ -5,12 +5,13 @@ import { Pencil, History, Loader2 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { saveTimeRecord } from '../services/timeRecords';
 import type { TimeRecord } from '../services/timeRecords';
+import type { RuleProfile } from '../utils/rules';
 import { calculateDailyTimes, formatDateExtensive, formatMinutesToTime, formatTime, manualTimes } from '../utils/time';
 
 type ManualRecord = TimeRecord & { source: 'manual' | 'imported' };
 type Revision = { id: string; changed_at: string; before_record: TimeRecord; after_record: TimeRecord };
 
-export default function ManualRecordActions({ record, onSaved }: { record: ManualRecord; onSaved: () => Promise<void> }) {
+export default function ManualRecordActions({ record, onSaved, profile }: { record: ManualRecord; onSaved: () => Promise<void>; profile?: RuleProfile }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const busy = useRef(false);
   const [mode, setMode] = useState<'edit' | 'history' | null>(null);
@@ -56,7 +57,7 @@ export default function ManualRecordActions({ record, onSaved }: { record: Manua
     try {
       if (form.date > format(new Date(), 'yyyy-MM-dd')) throw new Error('Não é permitido registrar ponto em datas futuras.');
       const punches = manualTimes(form.date, form.checkIn, form.checkOut, form.lunchOut, form.lunchIn, true);
-      const times = calculateDailyTimes(punches);
+      const times = calculateDailyTimes(punches, profile);
       await saveTimeRecord({ date: form.date, check_in: punches.checkIn, check_out: punches.checkOut,
         lunch_out: punches.lunchOut, lunch_in: punches.lunchIn,
         worked_minutes: times.workedMinutes, overtime_minutes: times.overtimeMinutes,

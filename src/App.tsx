@@ -16,6 +16,7 @@ import Employees from './pages/Employees';
 import MyRecords from './pages/MyRecords';
 import Ponto from './pages/Ponto';
 import Import from './pages/Import';
+import Shifts from './pages/Shifts';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 
@@ -115,6 +116,7 @@ export default function App() {
             <Route element={<ProtectedRoute requiredRole="admin" />}>
               <Route path="/funcionarios" element={<Employees />} />
               <Route path="/importar" element={<Import />} />
+              <Route path="/regras" element={<Shifts />} />
             </Route>
             
             <Route path="*" element={<Navigate to="/" replace />} />

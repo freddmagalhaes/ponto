@@ -1,4 +1,6 @@
-import { differenceInMinutes, parseISO, isValid, format, isAfter, isBefore, getHours } from 'date-fns';
+import { differenceInMinutes, parseISO, isValid, format, isAfter } from 'date-fns';
+import { LEGACY_PROFILE, nightMinutesForProfile } from './rules.ts';
+import type { RuleProfile } from './rules.ts';
 
 export interface TimeCalculationOptions {
   checkIn: string | Date | null;
@@ -14,8 +16,6 @@ export interface DailyCalculationResult {
   nightMinutes: number;
 }
 
-const REGULAR_WORK_HOURS_MINUTES = 8 * 60; // 8 horas
-
 /**
  * Normaliza um objeto, transformando string em Data válida se necessário.
  */
@@ -23,24 +23,6 @@ const toDate = (date: string | Date | null | undefined): Date | null => {
   if (!date) return null;
   const parsed = typeof date === 'string' ? parseISO(date) : date;
   return isValid(parsed) ? parsed : null;
-};
-
-/**
- * Calcula o tempo trabalhado dentro do período noturno (22:00 - 05:00).
- */
-const getNightMinutes = (start: Date, end: Date): number => {
-  let nightMins = 0;
-  let current = new Date(start);
-
-  // Verificamos minuto a minuto se recai na janela noturna
-  while (isBefore(current, end)) {
-    const hour = getHours(current);
-    if (hour >= 22 || hour < 5) {
-      nightMins++;
-    }
-    current = new Date(current.getTime() + 60000); // adiciona 1 minuto
-  }
-  return nightMins;
 };
 
 /** Allows an open lunch only while the workday is still open. */
@@ -79,7 +61,12 @@ export const manualTimes = (date: string, checkIn: string, checkOut: string, lun
   return result;
 };
 
-export const calculateDailyTimes = ({ checkIn, checkOut, lunchOut, lunchIn }: TimeCalculationOptions): DailyCalculationResult => {
+/**
+ * Sem `profile`, aplica o padrão legado (8h diárias, noturno 22h–5h em minutos de relógio).
+ * Com perfil "weekly", o extra não é calculado por dia (0 aqui): depende da semana,
+ * ver `withEffectiveOvertime` em rules.ts.
+ */
+export const calculateDailyTimes = ({ checkIn, checkOut, lunchOut, lunchIn }: TimeCalculationOptions, profile: RuleProfile = LEGACY_PROFILE): DailyCalculationResult => {
   const defaultResult: DailyCalculationResult = {
     totalMinutes: 0,
     workedMinutes: 0,
@@ -109,11 +96,8 @@ export const calculateDailyTimes = ({ checkIn, checkOut, lunchOut, lunchIn }: Ti
     : [[start, end]];
   const workedMinutes = Math.floor(intervals.reduce((sum, [a, b]) => sum + b.getTime() - a.getTime(), 0) / 60000);
   
-  // Horas extras: qualquer valor trabalhado que exceder 8 horas (480 minutos)
-  const overtimeMinutes = Math.max(0, workedMinutes - REGULAR_WORK_HOURS_MINUTES);
-
-  // Minutos noturnos
-  const nightMinutes = intervals.reduce((sum, [a, b]) => sum + getNightMinutes(a, b), 0);
+  const overtimeMinutes = profile.mode === 'daily' ? Math.max(0, workedMinutes - profile.dailyLimitMinutes) : 0;
+  const nightMinutes = nightMinutesForProfile(intervals, profile);
 
   return {
     totalMinutes,

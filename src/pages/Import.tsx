@@ -3,8 +3,10 @@ import { UploadCloud, FileType, CheckCircle, AlertCircle, Loader2 } from 'lucide
 import { supabase } from '../services/supabase';
 import { calculateDailyTimes } from '../utils/time';
 import { saveTimeRecord } from '../services/timeRecords';
+import { useRuleProfiles } from '../hooks/useRuleProfiles';
 
 export default function Import() {
+  const { getProfile } = useRuleProfiles();
   const [file, setFile] = useState<File | null>(null);
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState<{ success: number; errors: string[] } | null>(null);
@@ -42,10 +44,11 @@ export default function Import() {
       let successCount = 0;
 
       // 1. Fetch all employees to map emails to IDs
-      const { data: employees, error: empError } = await supabase.from('employees').select('id, email');
+      const { data: employees, error: empError } = await supabase.from('employees').select('id, email, shift_id');
       if (empError) throw empError;
 
       const emailMap = new Map(employees?.map(e => [e.email.toLowerCase(), e.id]));
+      const shiftMap = new Map(employees?.map(e => [e.id, e.shift_id as string | null]));
 
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i];
@@ -121,7 +124,7 @@ export default function Import() {
           if (checkOutDate && checkOutDate <= checkInDate) throw new Error('A saída deve ser posterior à entrada.');
           // CSV has no lunch columns: retain the interval and recalculate with it.
           const times = calculateDailyTimes({ checkIn: checkInIso, checkOut: checkOutIso,
-            lunchOut: previous?.lunch_out, lunchIn: previous?.lunch_in });
+            lunchOut: previous?.lunch_out, lunchIn: previous?.lunch_in }, getProfile(shiftMap.get(employeeId)));
           await saveTimeRecord({
             employee_id: employeeId, date: dateStr,
             check_in: checkInIso, check_out: checkOutIso,

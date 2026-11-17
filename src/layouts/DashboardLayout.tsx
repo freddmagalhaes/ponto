@@ -5,6 +5,7 @@ import {
   Users, 
   Clock, 
   FileBox, 
+  CalendarClock,
   LogOut, 
   Fingerprint,
   Sun,
@@ -28,6 +29,7 @@ export default function DashboardLayout() {
     { name: 'Bater Ponto', path: '/registrar', icon: Fingerprint, adminOnly: false },
     { name: 'Meus Registros', path: '/historico', icon: Clock, adminOnly: false },
     { name: 'Funcionários', path: '/funcionarios', icon: Users, adminOnly: true },
+    { name: 'Regras de Jornada', path: '/regras', icon: CalendarClock, adminOnly: true },
     { name: 'Importar AFV', path: '/importar', icon: FileBox, adminOnly: true },
   ];
 

@@ -6,6 +6,7 @@ import { supabase } from '../services/supabase';
 import { useAuthStore } from '../store/useAuth';
 import { calculateDailyTimes, formatMinutesToTime, formatTime, manualTimes } from '../utils/time';
 import { useCompanies } from '../hooks/useCompanies';
+import { useRuleProfiles } from '../hooks/useRuleProfiles';
 
 import { saveTimeRecord } from '../services/timeRecords';
 import type { TimeRecord } from '../services/timeRecords';
@@ -39,12 +40,10 @@ const getCoordinates = async (): Promise<{ latitude: number; longitude: number }
   }
 };
 
-const verifyBiometrics = async (): Promise<boolean> => {
-  return true;
-};
-
 export default function Ponto() {
-  const { user } = useAuthStore();
+  const { user, employeeData } = useAuthStore();
+  const { getProfile } = useRuleProfiles();
+  const profile = getProfile(employeeData?.shift_id);
   const { activeCompany } = useCompanies();
   const todayDateStr = format(new Date(), 'yyyy-MM-dd');
 
@@ -145,31 +144,15 @@ export default function Ponto() {
     savingRef.current = true;
     setSaving(true);
     setShowExitChoice(false);
-    const nowIso = new Date().toISOString();
     try {
-      setStatusMessage('Validando biometria...');
-      if (!await verifyBiometrics()) return;
       setStatusMessage('Buscando localização...');
       const coords = await getCoordinates();
       const lat = coords && Number.isFinite(coords.latitude) ? coords.latitude : null;
       const lng = coords && Number.isFinite(coords.longitude) ? coords.longitude : null;
       setStatusMessage('Registrando ponto...');
-      if (type === 'entrada') {
-        await saveTimeRecord({ employee_id: user.id, date: todayDateStr, check_in: nowIso,
-          source: 'manual', latitude_in: lat, longitude_in: lng }, null);
-      } else if (todayRecord) {
-        const values: Record<string, unknown> = {};
-        if (type === 'almoco_saida') values.lunch_out = nowIso;
-        if (type === 'almoco_retorno') values.lunch_in = nowIso;
-        if (type === 'saida') {
-          const times = calculateDailyTimes({ checkIn: todayRecord.check_in, checkOut: nowIso,
-            lunchOut: todayRecord.lunch_out, lunchIn: todayRecord.lunch_in });
-          Object.assign(values, { check_out: nowIso, worked_minutes: times.workedMinutes,
-            overtime_minutes: times.overtimeMinutes, night_minutes: times.nightMinutes,
-            latitude_out: lat, longitude_out: lng });
-        }
-        await saveTimeRecord(values, todayRecord);
-      }
+      // O horário e os minutos são definidos pelo servidor (função register_punch).
+      const { error } = await supabase.rpc('register_punch', { p_kind: type, p_lat: lat, p_lng: lng });
+      if (error) throw error;
     } catch (e) {
       alert('Erro ao registrar o ponto: ' + (e as Error).message);
     } finally {
@@ -187,7 +170,7 @@ export default function Ponto() {
     try {
       if (manualDate > todayDateStr) throw new Error('Não é permitido registrar ponto em datas futuras.');
       const punches = manualTimes(manualDate, manualCheckIn, manualCheckOut, manualLunchOut, manualLunchIn);
-      const times = calculateDailyTimes(punches);
+      const times = calculateDailyTimes(punches, profile);
       await saveTimeRecord({ employee_id: user.id, date: manualDate,
         check_in: punches.checkIn, check_out: punches.checkOut,
         lunch_out: punches.lunchOut, lunch_in: punches.lunchIn,
