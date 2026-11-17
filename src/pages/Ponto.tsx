@@ -7,6 +7,9 @@ import { useAuthStore } from '../store/useAuth';
 import { calculateDailyTimes, formatMinutesToTime, formatTime, manualTimes } from '../utils/time';
 import { useCompanies } from '../hooks/useCompanies';
 import { useRuleProfiles } from '../hooks/useRuleProfiles';
+import { collectorCode } from '../utils/download';
+import { savePunchReceipt, KIND_LABELS } from '../utils/receipt';
+import { Download } from 'lucide-react';
 
 import { saveTimeRecord } from '../services/timeRecords';
 import type { TimeRecord } from '../services/timeRecords';
@@ -40,6 +43,11 @@ const getCoordinates = async (): Promise<{ latitude: number; longitude: number }
   }
 };
 
+interface Receipt {
+  nsr: number; punch_kind: string; punched_at: string; hash: string; inpi_registration: string | null;
+  company: { name: string; cnpj: string; service_location: string | null } | null;
+}
+
 export default function Ponto() {
   const { user, employeeData } = useAuthStore();
   const { getProfile } = useRuleProfiles();
@@ -68,12 +76,25 @@ export default function Ponto() {
   const [loadError, setLoadError] = useState('');
   const savingRef = useRef(false);
   const exitDialogRef = useRef<HTMLDialogElement>(null);
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
 
   useEffect(() => {
     const dialog = exitDialogRef.current;
     if (showExitChoice) dialog?.showModal();
     else dialog?.close();
   }, [showExitChoice]);
+
+  // Comprovantes das últimas 48h (Portaria 671, art. 80): disponíveis sem o trabalhador precisar solicitar.
+  const fetchReceipts = useCallback(async () => {
+    if (!user) return;
+    const since = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+    const { data, error } = await supabase.from('afd_records')
+      .select('nsr, punch_kind, punched_at, hash, inpi_registration, company:companies(name, cnpj, service_location)')
+      .eq('rec_type', 7).eq('employee_id', user.id).gte('punched_at', since).order('punched_at', { ascending: false });
+    if (!error) setReceipts((data ?? []) as unknown as Receipt[]);
+  }, [user]);
+
+  useEffect(() => { Promise.resolve().then(fetchReceipts); }, [fetchReceipts]);
 
   const fetchTodayRecord = useCallback(async () => {
     if (!user) return;
@@ -151,12 +172,13 @@ export default function Ponto() {
       const lng = coords && Number.isFinite(coords.longitude) ? coords.longitude : null;
       setStatusMessage('Registrando ponto...');
       // O horário e os minutos são definidos pelo servidor (função register_punch).
-      const { error } = await supabase.rpc('register_punch', { p_kind: type, p_lat: lat, p_lng: lng });
+      const { error } = await supabase.rpc('register_punch', { p_kind: type, p_lat: lat, p_lng: lng, p_collector: collectorCode() });
       if (error) throw error;
     } catch (e) {
       alert('Erro ao registrar o ponto: ' + (e as Error).message);
     } finally {
       await fetchTodayRecord();
+      await fetchReceipts();
       savingRef.current = false;
       setSaving(false);
       setStatusMessage('');
@@ -324,6 +346,29 @@ export default function Ponto() {
           </div>
         </>
       )}
+
+       {employeeData && !employeeData.cpf && (
+         <p role="status" className="w-full max-w-md rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
+           Seu CPF não está cadastrado, então suas marcações ainda não geram comprovante oficial. Procure o RH.
+         </p>
+       )}
+       {receipts.length > 0 && (
+         <div className="w-full max-w-md bg-card border border-border rounded-xl p-6 shadow-sm">
+           <h3 className="font-semibold text-lg border-b border-border pb-3 mb-2">Comprovantes (últimas 48h)</h3>
+           <ul className="divide-y divide-border/50">
+             {receipts.map(r => (
+               <li key={r.nsr} className="flex items-center justify-between gap-3 py-2 text-sm">
+                 <span>{KIND_LABELS[r.punch_kind] ?? r.punch_kind} · {format(new Date(r.punched_at), "dd/MM HH:mm")} · NSR {String(r.nsr).padStart(9, '0')}</span>
+                 <button type="button" aria-label={`Baixar comprovante NSR ${r.nsr}`} disabled={!r.company}
+                   onClick={() => r.company && savePunchReceipt({ nsr: r.nsr, kind: r.punch_kind, punchedAt: r.punched_at, hash: r.hash,
+                     inpiRegistration: r.inpi_registration ?? '', employer: { name: r.company.name, cnpj: r.company.cnpj ?? '', location: r.company.service_location ?? '' },
+                     employee: { name: employeeData?.name ?? '', cpf: employeeData?.cpf ?? '' } })}
+                   className="shrink-0 p-2 text-primary hover:bg-primary/10 rounded-md disabled:opacity-40"><Download className="w-4 h-4" /></button>
+               </li>
+             ))}
+           </ul>
+         </div>
+       )}
 
        <div className="mt-8 w-full max-w-md bg-card border border-border rounded-xl p-6 shadow-sm">
          <h3 className="font-semibold text-lg border-b border-border pb-3 mb-4 flex items-center justify-between">

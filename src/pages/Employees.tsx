@@ -5,11 +5,13 @@ import { getPayrollPeriod, formatMinutesToTime } from '../utils/time';
 import type { Employee } from '../store/useAuth';
 import { useRuleProfiles } from '../hooks/useRuleProfiles';
 import { withEffectiveOvertime, wholeWeeks } from '../utils/rules';
+import { digits, isValidCpf } from '../utils/afd';
 
 export default function Employees() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const { rows: shiftRows, getProfile, holidays } = useRuleProfiles();
   const [shiftId, setShiftId] = useState('');
+  const [cpf, setCpf] = useState('');
   const [loading, setLoading] = useState(true);
   
   // Modals state
@@ -148,6 +150,7 @@ export default function Employees() {
     setJourneyStart('08:00');
     setJourneyEnd('18:00');
     setShiftId('');
+    setCpf('');
     setEditingId(null);
   };
 
@@ -166,7 +169,14 @@ export default function Employees() {
     setJourneyStart(emp.journey_start ? emp.journey_start.slice(0,5) : '08:00');
     setJourneyEnd(emp.journey_end ? emp.journey_end.slice(0,5) : '18:00');
     setShiftId(emp.shift_id ?? '');
+    setCpf(emp.cpf ?? '');
     setShowEditModal(true);
+  };
+
+  const cpfValue = (): string | null | undefined => {
+    if (!cpf.trim()) return null;
+    if (!isValidCpf(cpf)) { alert('CPF inválido.'); return undefined; }
+    return digits(cpf);
   };
 
   const handleCreateEmployee = async (e: React.FormEvent) => {
@@ -184,6 +194,8 @@ export default function Employees() {
       return;
     }
 
+    const cpfDigits = cpfValue();
+    if (cpfDigits === undefined) return;
     setSaving(true);
     try {
       // 1. Usar o cliente supabaseAdmin para que o admin logado NÃO seja deslogado
@@ -209,6 +221,7 @@ export default function Employees() {
             journey_start: journeyStart,
             journey_end: journeyEnd,
             ...(shiftRows.length ? { shift_id: shiftId || null } : {}),
+            cpf: cpfDigits,
             name: cleanName
           })
           .eq('id', data.user.id);
@@ -235,11 +248,14 @@ export default function Employees() {
       return;
     }
 
+    const cpfDigits = cpfValue();
+    if (cpfDigits === undefined) return;
     setSaving(true);
     try {
       const { error } = await supabase
         .from('employees')
         .update({
+          cpf: cpfDigits,
           name: cleanName,
           position: position.trim(),
           role: role === 'admin' ? 'admin' : 'user',
@@ -342,6 +358,10 @@ export default function Employees() {
                   <input value={position} onChange={e=>setPosition(e.target.value)} type="text" className="w-full bg-background border border-input rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
                 </div>
                 <div>
+                  <label className="block text-sm font-medium mb-1 text-foreground">CPF</label>
+                  <input value={cpf} onChange={e=>setCpf(e.target.value)} inputMode="numeric" placeholder="000.000.000-00" type="text" className="w-full bg-background border border-input rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+                </div>
+                <div>
                   <label className="block text-sm font-medium mb-1 text-foreground">Acesso</label>
                   <select value={role} onChange={e=>setRole(e.target.value)} className="w-full bg-background border border-input rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
                     <option value="user">Usuário Comum</option>
@@ -398,6 +418,10 @@ export default function Employees() {
                 <div>
                   <label className="block text-sm font-medium mb-1 text-foreground">Cargo/Função</label>
                   <input value={position} onChange={e=>setPosition(e.target.value)} type="text" className="w-full bg-background border border-input rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-foreground">CPF</label>
+                  <input value={cpf} onChange={e=>setCpf(e.target.value)} inputMode="numeric" placeholder="000.000.000-00" type="text" className="w-full bg-background border border-input rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1 text-foreground">Acesso</label>

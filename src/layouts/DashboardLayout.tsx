@@ -6,6 +6,8 @@ import {
   Clock, 
   FileBox, 
   CalendarClock,
+  CalendarDays,
+  ShieldCheck,
   LogOut, 
   Fingerprint,
   Sun,
@@ -30,6 +32,8 @@ export default function DashboardLayout() {
     { name: 'Meus Registros', path: '/historico', icon: Clock, adminOnly: false },
     { name: 'Funcionários', path: '/funcionarios', icon: Users, adminOnly: true },
     { name: 'Regras de Jornada', path: '/regras', icon: CalendarClock, adminOnly: true },
+    { name: 'Feriados', path: '/feriados', icon: CalendarDays, adminOnly: true },
+    { name: 'Conformidade', path: '/conformidade', icon: ShieldCheck, adminOnly: true },
     { name: 'Importar AFV', path: '/importar', icon: FileBox, adminOnly: true },
   ];
 

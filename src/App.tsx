@@ -17,6 +17,8 @@ import MyRecords from './pages/MyRecords';
 import Ponto from './pages/Ponto';
 import Import from './pages/Import';
 import Shifts from './pages/Shifts';
+import Holidays from './pages/Holidays';
+import Compliance from './pages/Compliance';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 
@@ -117,6 +119,8 @@ export default function App() {
               <Route path="/funcionarios" element={<Employees />} />
               <Route path="/importar" element={<Import />} />
               <Route path="/regras" element={<Shifts />} />
+              <Route path="/feriados" element={<Holidays />} />
+              <Route path="/conformidade" element={<Compliance />} />
             </Route>
             
             <Route path="*" element={<Navigate to="/" replace />} />
