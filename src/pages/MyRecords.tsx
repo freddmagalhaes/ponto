@@ -12,6 +12,8 @@ import ManualRecordActions from '../components/ManualRecordActions';
 import { fetchAllPages } from '../utils/pagination';
 import { useRuleProfiles } from '../hooks/useRuleProfiles';
 import { withEffectiveOvertime, wholeWeeks } from '../utils/rules';
+import { dayTags, eachDate } from '../utils/calendar';
+import type { DayTag } from '../utils/calendar';
 
 interface TimeRecord {
   id: string;
@@ -35,10 +37,17 @@ interface TimeRecord {
   created_at: string;
 }
 
+function DayBadge({ tag }: { tag: DayTag }) {
+  const style = tag.kind === 'holiday'
+    ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300'
+    : 'bg-amber-500/10 text-amber-700 dark:text-amber-300';
+  return <span className={`rounded px-2 py-1 ${style}`}>{tag.label}</span>;
+}
+
 export default function MyRecords() {
   const { user, employeeData } = useAuthStore();
   const { uniqueCompanies, getCompanyNameForDate, loading: companiesLoading } = useCompanies();
-  const { getProfile, holidays } = useRuleProfiles();
+  const { getProfile, holidays, holidayInfo } = useRuleProfiles();
   const profile = getProfile(employeeData?.shift_id);
   const [saveNotice, setSaveNotice] = useState('');
   const [scope, setScope] = useState<'cycle' | 'all'>('cycle');
@@ -126,6 +135,25 @@ export default function MyRecords() {
     return getCompanyNameForDate(record.date) === selectedCompany;
   });
 
+  // No ciclo, mostra também os dias sem marcação (domingos, feriados, faltas) em que havia vínculo com empresa.
+  const listItems = useMemo(() => {
+    type Item = { date: string; record?: (typeof filteredRecords)[number] };
+    const items: Item[] = filteredRecords.map(record => ({ date: record.date, record }));
+    if (scope === 'cycle') {
+      const period = getPayrollPeriod(year, month);
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const have = new Set(filteredRecords.map(r => r.date));
+      for (const date of eachDate(period.startDateStr, period.endDateStr < today ? period.endDateStr : today)) {
+        const company = getCompanyNameForDate(date);
+        if (have.has(date) || company === '--' || (selectedCompany !== 'all' && company !== selectedCompany)) continue;
+        items.push({ date });
+      }
+    }
+    return items.sort((a, b) => b.date.localeCompare(a.date));
+  }, [filteredRecords, scope, year, month, selectedCompany, getCompanyNameForDate]);
+
+  const tagText = (date: string) => dayTags(date, holidayInfo).map(t => t.label).join(' · ');
+
   const handleExportPDF = () => {
     if (!filteredRecords || filteredRecords.length === 0) {
       alert("Não há registros para exportar neste período com o filtro selecionado.");
@@ -157,7 +185,7 @@ export default function MyRecords() {
     doc.text(`Funcionário: ${employeeData?.name || user?.user_metadata?.name || 'Não informado'}`, 14, 40);
     doc.text(`Gerado em: ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`, 14, 46);
 
-    const tableColumn = ["Data", "Empresa", "Entrada", "Saída para almoço", "Retorno do almoço", "Saída", "Total", "Extras (Status)", "Noturno (Status)", "Origem", "Localização"];
+    const tableColumn = ["Data", "Dia", "Empresa", "Entrada", "Saída para almoço", "Retorno do almoço", "Saída", "Total", "Extras (Status)", "Noturno (Status)", "Origem", "Localização"];
     const tableRows: (string | null)[][] = [];
 
     filteredRecords.forEach(record => {
@@ -187,7 +215,8 @@ export default function MyRecords() {
       const source = record.source === 'imported' ? 'Importado' : 'Manual';
       const gpsStatus = record.latitude_in ? 'Sim' : 'Não';
       
-      tableRows.push([dateStr, company, checkIn, lunchOut, lunchIn, checkOut, total, overtimeStr, nightStr, source, gpsStatus]);
+      const dayInfo = [format(new Date(`${record.date}T12:00:00`), 'EEE', { locale: ptBR }), tagText(record.date)].filter(Boolean).join(' · ');
+      tableRows.push([dateStr, dayInfo, company, checkIn, lunchOut, lunchIn, checkOut, total, overtimeStr, nightStr, source, gpsStatus]);
     });
 
     autoTable(doc, {
@@ -304,12 +333,25 @@ export default function MyRecords() {
           <p aria-live="polite">{filteredRecords.length} {filteredRecords.length === 1 ? 'registro' : 'registros'} {scope === 'cycle' ? 'neste ciclo' : 'no histórico'}{selectedCompany !== 'all' ? ` · ${selectedCompany}` : ''}.</p>
           {scope === 'cycle' && <button onClick={() => setScope('all')} className="text-primary underline">Ver todo o histórico</button>}
         </div>
-        {filteredRecords.length === 0 ? <p className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground">
+        {listItems.length === 0 ? <p className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground">
           Nenhum registro encontrado para os filtros selecionados.
         </p> : <div className="space-y-3">
-          {filteredRecords.map(record => {
-            const date = new Date(`${record.date}T12:00:00`);
-            const weekend = date.getDay() === 0 || date.getDay() === 6;
+          {listItems.map(item => {
+            const date = new Date(`${item.date}T12:00:00`);
+            const tags = dayTags(item.date, holidayInfo);
+            const tagBadges = tags.map(t => <DayBadge key={t.label} tag={t} />);
+            if (!item.record) {
+              return <article key={`empty-${item.date}`} aria-label={`Sem marcação em ${formatDateExtensive(item.date)}`}
+                className="min-w-0 rounded-xl border border-dashed border-border bg-card/50 p-4">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <h2 className="font-semibold text-base">{formatDateExtensive(item.date)}</h2>
+                  <span className="text-xs text-muted-foreground">{format(date, 'EEEE', { locale: ptBR })}</span>
+                  <div className="flex flex-wrap gap-2 text-xs">{tagBadges}</div>
+                  <span className="ml-auto text-xs text-muted-foreground">Sem marcação</span>
+                </div>
+              </article>;
+            }
+            const record = item.record;
             const coordinates = [
               { label: 'GPS entrada', lat: record.latitude_in, lng: record.longitude_in },
               { label: 'GPS saída', lat: record.latitude_out, lng: record.longitude_out },
@@ -325,7 +367,7 @@ export default function MyRecords() {
                   <div className="flex flex-wrap gap-2 text-xs">
                     <span className="max-w-full break-words rounded bg-secondary px-2 py-1">{getCompanyNameForDate(record.date)}</span>
                     <span className="rounded bg-primary/10 text-primary px-2 py-1">{record.source === 'imported' ? 'Importado' : 'Manual'}</span>
-                    {weekend && <span className="rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 px-2 py-1">Fim de semana</span>}
+                    {tagBadges}
                   </div>
                 </div>
                 <dl className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-4">
